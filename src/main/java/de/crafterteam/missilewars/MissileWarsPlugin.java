@@ -11,7 +11,8 @@ import de.crafterteam.missilewars.map.MapManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
-import org.bukkit.command.PluginCommand;
+import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
+import java.util.List;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Locale;
@@ -52,12 +53,10 @@ public final class MissileWarsPlugin extends JavaPlugin {
         listener = new GameListener(this);
         getServer().getPluginManager().registerEvents(listener, this);
 
+        // Modernes Paper-Command-System (Brigadier, Lifecycle) statt plugin.yml
         MwCommand cmd = new MwCommand(this);
-        PluginCommand pc = getCommand("mw");
-        if (pc != null) {
-            pc.setExecutor(cmd);
-            pc.setTabCompleter(cmd);
-        }
+        getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event ->
+                event.registrar().register("mw", "Missile Wars", List.of("missilewars", "missiles"), cmd));
         getLogger().info("MissileWars aktiv – " + maps.all().size() + " Map(s).");
     }
 

@@ -53,6 +53,11 @@ public enum Team {
         return glass;
     }
 
+    /** Teamfarbe für Raketen-Flossen. */
+    public Material accent() {
+        return this == GREEN ? Material.LIME_TERRACOTTA : Material.RED_TERRACOTTA;
+    }
+
     public Color armorColor() {
         return armorColor;
     }

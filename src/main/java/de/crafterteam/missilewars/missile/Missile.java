@@ -68,6 +68,25 @@ public final class Missile {
         this.owner = owner;
         this.parts = parts;
         this.settings = settings;
+        track(parts.keySet());
+    }
+
+    /** Front, Heck und Mitte merken (für Warnung, Effekte, Einschlag). */
+    private int track(Set<Pos> positions) {
+        int rear = dir > 0 ? Integer.MAX_VALUE : Integer.MIN_VALUE;
+        int front = dir > 0 ? Integer.MIN_VALUE : Integer.MAX_VALUE;
+        double sx = 0, sy = 0;
+        for (Pos p : positions) {
+            rear = dir > 0 ? Math.min(rear, p.z()) : Math.max(rear, p.z());
+            front = dir > 0 ? Math.max(front, p.z()) : Math.min(front, p.z());
+            sx += p.x();
+            sy += p.y();
+        }
+        if (positions.isEmpty()) return rear;
+        frontZ = front;
+        centerX = sx / positions.size() + 0.5;
+        centerY = sy / positions.size() + 0.5;
+        return rear;
     }
 
     private boolean warned;
@@ -196,18 +215,7 @@ public final class Missile {
 
     /** Partikelspur am Heck + leises Antriebsgeräusch; merkt sich Front/Mitte für die Warnung. */
     private void effects(Set<Pos> positions) {
-        int rear = dir > 0 ? Integer.MAX_VALUE : Integer.MIN_VALUE;
-        int front = dir > 0 ? Integer.MIN_VALUE : Integer.MAX_VALUE;
-        double sx = 0, sy = 0;
-        for (Pos p : positions) {
-            rear = dir > 0 ? Math.min(rear, p.z()) : Math.max(rear, p.z());
-            front = dir > 0 ? Math.max(front, p.z()) : Math.min(front, p.z());
-            sx += p.x();
-            sy += p.y();
-        }
-        frontZ = front;
-        centerX = sx / positions.size() + 0.5;
-        centerY = sy / positions.size() + 0.5;
+        int rear = track(positions);
         Location tail = new Location(world, centerX, centerY, rear + 0.5 - dir * 0.8);
         world.spawnParticle(Particle.FLAME, tail, 4, 0.2, 0.2, 0.1, 0.01);
         world.spawnParticle(Particle.CLOUD, tail, 2, 0.2, 0.2, 0.1, 0.01);
@@ -216,12 +224,19 @@ public final class Missile {
 
     private void detonate(Map<Pos, BlockData> current) {
         ThreadLocalRandom r = ThreadLocalRandom.current();
+        // Einschlag-Effekt an der Front
+        Location impact = new Location(world, centerX, centerY, frontZ + 0.5 + dir * 0.6);
+        world.spawnParticle(Particle.ELECTRIC_SPARK, impact, 40, 0.6, 0.6, 0.3, 0.15);
+        world.spawnParticle(Particle.LAVA, impact, 8, 0.4, 0.4, 0.2, 0);
+        world.playSound(impact, Sound.ENTITY_TNT_PRIMED, 1.4f, 0.8f);
+        world.playSound(impact, Sound.BLOCK_ANVIL_LAND, 0.6f, 0.6f);
+        boolean instant = type.fuseOverride() >= 0;
         for (Map.Entry<Pos, BlockData> e : current.entrySet()) {
             if (e.getValue().getMaterial() != Material.TNT) continue;
             Pos p = e.getKey();
             world.getBlockAt(p.x(), p.y(), p.z()).setType(Material.AIR, false);
             Location loc = new Location(world, p.x() + 0.5, p.y(), p.z() + 0.5);
-            int fuse = settings.fuseTicks() + r.nextInt(0, 11);
+            int fuse = instant ? type.fuseOverride() : settings.fuseTicks() + r.nextInt(0, 11);
             world.spawn(loc, TNTPrimed.class, t -> {
                 t.setFuseTicks(fuse);
                 if (owner != null && owner.isOnline()) t.setSource(owner);

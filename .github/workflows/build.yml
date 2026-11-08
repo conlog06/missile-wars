@@ -12,9 +12,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '25'
@@ -27,7 +27,7 @@ jobs:
         id: v
         run: echo "version=$(mvn -q help:evaluate -Dexpression=project.version -DforceStdout)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: MissileWars-${{ steps.v.outputs.version }}
           path: target/MissileWars-*.jar
@@ -42,5 +42,5 @@ jobs:
           body: |
             Missile Wars für **Paper 26.3** (Java 21+).
             JAR in `plugins/` legen, Server starten, ingame `/mw join` – die Standard-Arena wird automatisch generiert.
-            Neu: Raketen-Vorschau, Portal-Hologramme & Portal-HP, Bestenlisten-Hologramme, Windkugel/Streitkolben, Item-Cooldowns, 1.8-PvP-Schalter, Team-Dialog – Details in der README.
+            Neu: überarbeitete Raketen mit Teamfarben, Gemini & Abfangjäger, Einschlag-Effekte, Map-Abstimmung, Paper-Command-System – Details in der README.
             Eigene Maps: `/mw map create <name> arena` bzw. `/mw map import <name> <welt>` (siehe README).

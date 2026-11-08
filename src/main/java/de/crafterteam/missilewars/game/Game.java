@@ -101,6 +101,8 @@ public final class Game {
     private final Map<Team, Integer> portalHp = new EnumMap<>(Team.class);
     private final Map<Team, Integer> lastPortalLeft = new EnumMap<>(Team.class);
     private final Map<Team, TextDisplay> portalHolograms = new EnumMap<>(Team.class);
+    private final Map<UUID, String> votes = new HashMap<>();
+    private boolean votingDone;
 
     private Game(MissileWarsPlugin plugin, MapConfig map, World world) {
         this.plugin = plugin;
@@ -280,7 +282,7 @@ public final class Game {
             broadcast(Msg.esc(p.getName()) + " ist Team " + t.colored() + " <gray>beigetreten.");
         } else {
             p.setGameMode(GameMode.ADVENTURE);
-            plugin.items().giveLobbyItems(p, t);
+            giveLobbyItems(p, t);
             broadcast(Msg.esc(p.getName()) + " ist beigetreten. <dark_gray>(" + teams.size() + "/" + max() + ")");
             p.sendMessage(Msg.prefixed("Du bist in Team " + t.colored() + "<gray>. Wechseln: ")
                     .append(Msg.mm("<green><u>[Grün]").clickEvent(ClickEvent.runCommand("/mw team gruen")))
@@ -325,7 +327,7 @@ public final class Game {
         teams.put(p.getUniqueId(), t);
         setBoardTeam(p, t);
         p.teleport(map.spawn(t).toLocation(world));
-        plugin.items().giveLobbyItems(p, t);
+        giveLobbyItems(p, t);
         p.playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
         Msg.send(p, "Du bist jetzt in Team " + t.colored() + "<gray>.");
         updateBoard();
@@ -379,6 +381,118 @@ public final class Game {
         if (st != null) st.addEntry(p.getName());
     }
 
+    // ── Map-Voting ───────────────────────────────────────────────────
+
+    public boolean votingOpen() {
+        return !votingDone && (state == State.WAITING || state == State.COUNTDOWN) && plugin.getConfig().getBoolean("voting.enabled", true);
+    }
+
+    /** Maps, über die abgestimmt werden kann (fertig & ohne laufende Runde, plus die aktuelle). */
+    public List<MapConfig> votableMaps() {
+        List<MapConfig> l = new ArrayList<>();
+        for (MapConfig m : plugin.maps().all()) {
+            if (!m.ready() || !m.complete()) continue;
+            Game other = plugin.games().get(m.name());
+            if (other != null && other != this) continue;
+            l.add(m);
+        }
+        return l;
+    }
+
+    public int votesFor(String mapName) {
+        int n = 0;
+        for (String v : votes.values()) if (v.equals(mapName)) n++;
+        return n;
+    }
+
+    public void vote(Player p, String mapName) {
+        if (!votingOpen()) {
+            Msg.send(p, "<red>Die Abstimmung ist vorbei.");
+            return;
+        }
+        MapConfig m = plugin.maps().get(mapName);
+        if (m == null || !votableMaps().contains(m)) {
+            Msg.send(p, "<red>Für diese Map kann nicht abgestimmt werden.");
+            return;
+        }
+        votes.put(p.getUniqueId(), m.name());
+        p.playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.3f);
+        broadcast(Msg.esc(p.getName()) + " stimmt für <yellow>" + m.name() + " <dark_gray>(" + votesFor(m.name()) + " Stimmen)");
+        updateBoard();
+    }
+
+    private void giveLobbyItems(Player p, Team t) {
+        plugin.items().giveLobbyItems(p, t, votingOpen() && votableMaps().size() > 1);
+    }
+
+    private void resolveVote() {
+        votingDone = true;
+        if (votes.isEmpty()) return;
+        String best = map.name();
+        int bestVotes = votesFor(best);
+        for (MapConfig m : votableMaps()) {
+            int v = votesFor(m.name());
+            if (v > bestVotes) {
+                best = m.name();
+                bestVotes = v;
+            }
+        }
+        if (best.equals(map.name())) {
+            broadcast("<gold>Abstimmung: <white>" + map.name() + " <gray>bleibt. <dark_gray>(" + bestVotes + " Stimmen)");
+            return;
+        }
+        MapConfig target = plugin.maps().get(best);
+        if (target == null || plugin.games().get(best) != null) return;
+        broadcast("<gold>Abstimmung: <white>" + best + " <gray>gewinnt mit " + bestVotes + " Stimmen – Arena wird gewechselt …");
+        try {
+            Game ng = plugin.games().getOrCreate(target);
+            transferTo(ng);
+        } catch (GameException e) {
+            broadcast("<red>Map-Wechsel fehlgeschlagen: " + Msg.esc(e.getMessage()));
+        }
+    }
+
+    /** Alle Spieler (mit gespeicherten Inventaren) in eine neue Runde umziehen, diese Runde auflösen. */
+    private void transferTo(Game ng) {
+        for (Map.Entry<UUID, Team> e : new ArrayList<>(teams.entrySet())) {
+            Player p = Bukkit.getPlayer(e.getKey());
+            if (p == null) continue;
+            plugin.games().unbind(p);
+            p.hideBossBar(bossBar);
+            ng.adopt(p, e.getValue(), snapshots.remove(e.getKey()), false);
+        }
+        for (UUID id : new ArrayList<>(spectators)) {
+            Player p = Bukkit.getPlayer(id);
+            if (p == null) continue;
+            plugin.games().unbind(p);
+            ng.adopt(p, null, snapshots.remove(id), true);
+        }
+        teams.clear();
+        spectators.clear();
+        ng.votingDone = true;
+        ng.state = State.COUNTDOWN;
+        ng.countdown = Math.max(countdown, 5);
+        ng.updateBoard();
+        shutdown();
+    }
+
+    private void adopt(Player p, Team t, PlayerSnapshot snap, boolean spectator) {
+        if (snap != null) snapshots.put(p.getUniqueId(), snap);
+        names.put(p.getUniqueId(), p.getName());
+        plugin.games().bind(p, this);
+        p.setScoreboard(board);
+        if (spectator || t == null) {
+            spectators.add(p.getUniqueId());
+            p.setGameMode(GameMode.SPECTATOR);
+            p.teleport(map.spectatorSpot(world));
+            return;
+        }
+        teams.put(p.getUniqueId(), t);
+        setBoardTeam(p, t);
+        p.teleport(map.spawn(t).toLocation(world));
+        giveLobbyItems(p, t);
+    }
+
     // ── Ablauf ───────────────────────────────────────────────────────
 
     private void checkStart() {
@@ -407,6 +521,10 @@ public final class Game {
                     state = State.WAITING;
                     broadcast("<red>Zu wenige Spieler – Countdown abgebrochen.");
                     break;
+                }
+                if (!votingDone && countdown <= plugin.getConfig().getInt("voting.end-at", 10)) {
+                    resolveVote();
+                    if (shutDown) return;
                 }
                 if (countdown <= 0) {
                     start();
@@ -527,6 +645,12 @@ public final class Game {
             Missile m = it.next();
             Missile.Result r = m.tick();
             if (r != Missile.Result.FLYING) {
+                if (r == Missile.Result.EXPLODED && m.owner() != null && m.owner().isOnline()) {
+                    m.owner().sendActionBar(Msg.mm("<gold>💥 " + m.type().displayName() + " eingeschlagen!"));
+                }
+                if (r == Missile.Result.STOPPED && m.owner() != null && m.owner().isOnline()) {
+                    m.owner().sendActionBar(Msg.mm("<gray>Deine " + m.type().displayName() + " wurde gestoppt."));
+                }
                 if (r == Missile.Result.EXPLODED && m.owner() != null) {
                     Team defender = map.forward(Team.GREEN) == m.dir() ? Team.RED : Team.GREEN;
                     if (Math.abs(map.portal(defender).centerZ() - m.frontZ()) <= 10) {
@@ -761,7 +885,8 @@ public final class Game {
             int wy = origin.getY() + part.y();
             int wz = origin.getZ() + dir * part.z();
             Missile.Pos pos = new Missile.Pos(wx, wy, wz);
-            parts.put(pos, part.material());
+            Material mat = part.material() == MissileType.TEAM_ACCENT ? t.accent() : part.material();
+            parts.put(pos, mat);
             if (error != null) continue;
             if (wy < world.getMinHeight() || wy >= world.getMaxHeight()) {
                 error = "Hier ist kein Platz für die Rakete.";
@@ -775,7 +900,7 @@ public final class Game {
             } else if (dir * (wz + 0.5 - ownPortalZ) <= 0) {
                 error = "Nicht hinter dem eigenen Portal!";
             }
-            BlockData data = part.material().createBlockData();
+            BlockData data = mat.createBlockData();
             if (part.facing() != null && data instanceof Directional d) {
                 BlockFace f = part.facing();
                 if (dir < 0 && f != BlockFace.UP && f != BlockFace.DOWN) f = f.getOppositeFace();
@@ -794,6 +919,15 @@ public final class Game {
         Team t = team(p);
         if (t == null || state != State.RUNNING) return false;
         int dir = map.forward(t);
+        int maxActive = plugin.getConfig().getInt("missile.max-active-per-team", 15);
+        if (maxActive > 0) {
+            int active = 0;
+            for (Missile m : missiles) if (m.dir() == dir) active++;
+            if (active >= maxActive) {
+                Msg.send(p, "<red>Dein Team hat schon " + active + " Raketen in der Luft – warte kurz.");
+                return false;
+            }
+        }
         Placement pl = placement(t, type, origin);
         if (pl.error() != null) {
             Msg.send(p, "<red>" + pl.error());
@@ -980,6 +1114,12 @@ public final class Game {
             case COUNTDOWN -> lines.add("<gray>Start in <yellow>" + Math.max(0, countdown) + "s");
             case RUNNING -> lines.add("<gray>Zeit: <white>" + formatTime(seconds));
             case ENDING -> lines.add("<gold>Runde beendet");
+        }
+        if (votingOpen() && !votes.isEmpty()) {
+            String lead = map.name();
+            int lv = votesFor(lead);
+            for (MapConfig m : votableMaps()) if (votesFor(m.name()) > lv) { lead = m.name(); lv = votesFor(lead); }
+            lines.add("<gray>Vote: <yellow>" + lead + " <dark_gray>(" + lv + ")");
         }
         lines.add(" ");
         lines.add(Team.GREEN.colored() + "<gray>: <white>" + teamPlayers(Team.GREEN).size());

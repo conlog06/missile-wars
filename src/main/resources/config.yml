@@ -35,6 +35,10 @@ sudden-death:
 warning:
   distance: 20      # Verteidiger warnen, wenn eine Rakete so nah am Portal ist (0 = aus)
 
+voting:
+  enabled: true     # Map-Abstimmung in der Wartephase (Karte im Inventar, /mw vote)
+  end-at: 10        # bei so vielen Sekunden Countdown wird ausgewertet
+
 # Team-Auswahl: dialog (nativer Dialog, ab 1.21.6) oder inventory (für alte Clients via ViaBackwards)
 # Schleichen + Rechtsklick auf die Wolle öffnet immer das Inventar-Menü.
 menu-style: dialog
@@ -56,6 +60,7 @@ missile:
   max-steps: 260          # danach bleibt die Rakete einfach stehen
   pierce-glass-max: 12    # Shieldbuster: so viele Glasblöcke durchbricht er
   own-half-only: true     # Raketen nur auf der eigenen Hälfte spawnen
+  max-active-per-team: 15 # gleichzeitig fliegende Raketen pro Team (0 = unbegrenzt)
   # Ticks pro Block (kleiner = schneller)
   speed:
     tomahawk: 4
@@ -63,6 +68,8 @@ missile:
     shieldbuster: 4
     lightning: 2
     guardian: 5
+    gemini: 4
+    interceptor: 2
 
 shield:
   radius: 3
@@ -78,6 +85,8 @@ items:
   shieldbuster: { weight: 6,  max: 1 }
   lightning:    { weight: 8,  max: 2 }
   guardian:     { weight: 6,  max: 1 }
+  gemini:       { weight: 6,  max: 1 }
+  interceptor:  { weight: 7,  max: 2 }
   shield:       { weight: 8,  max: 2 }
   fireball:     { weight: 6,  max: 2 }
   arrows:       { weight: 8,  max: 9, amount: 3 }

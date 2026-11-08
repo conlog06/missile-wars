@@ -13,7 +13,7 @@ Alte Clients (1.8 / 1.12) kommen per **ViaVersion + ViaBackwards** auf den Serve
 ## Spielablauf
 
 - Ab `players.min` Spielern startet der Countdown, dann gibt es Bogen (Flame), Lederrüstung und alle 15 s ein zufälliges Item.
-- **Raketen** (Rechtsklick auf einen Block): Tomahawk, Juggernaut, Shieldbuster (bricht durch Glas), Lightning (schnell), Guardian (mit Plattform zum Mitfahren).
+- **Raketen** (Rechtsklick auf einen Block): Tomahawk, Juggernaut, Shieldbuster, Lightning, Guardian, Gemini, Abfangjäger (siehe Tabelle oben).
 - **Schild**: Schneeball werfen → klappt zu einer Glaswand auf.
 - **Feuerball**: abfeuern, kann zurückgeschlagen werden.
 - Raketen entschärfen: Antrieb (Schleim, Kolben, Observer) abbauen → Rakete bleibt stehen.
@@ -21,6 +21,29 @@ Alte Clients (1.8 / 1.12) kommen per **ViaVersion + ViaBackwards** auf den Serve
 - Kein Todesbildschirm: Tod/Void → direkt zurück zum Team-Spawn, Inventar bleibt.
 
 Die Raketen werden vom Plugin bewegt (wie Flugmaschinen, aber ohne echtes Redstone) – das läuft stabil, ohne Lag und unabhängig von Redstone-Änderungen in neuen Versionen.
+
+## Neu in 1.3.0
+
+**Raketen komplett überarbeitet**
+- Neue, größere Designs mit **Flossen in Teamfarbe** (Terrakotta) und Redstone-Kern
+- Zwei neue Raketen: **Gemini** (Zwillingsrakete, trifft breit) und **Abfangjäger** (sehr schnell, zündet sofort – holt gegnerische Raketen aus der Luft)
+- **Einschlag-Effekte**: Funken, Lava-Partikel, Zisch- & Aufprallsound; der Schütze bekommt „💥 eingeschlagen" bzw. „gestoppt" angezeigt
+- **Limit aktiver Raketen** pro Team (`missile.max-active-per-team`) gegen Lag
+- Alle Raketenteile sind automatisch abbaubar (entschärfen), auch mit alter Config
+
+| Rakete | Größe | TNT | Besonderheit |
+|---|---|---|---|
+| Tomahawk | 1×2×7 | 5 | Allrounder |
+| Juggernaut | 3×3×8 | 17 | langsam, riesige Ladung |
+| Shieldbuster | 1×3×9 | 10 | bricht durch Glas |
+| Lightning | 1×2×6 | 2 | sehr schnell |
+| Guardian | 3×4×6 | 4 | Plattform zum Mitfahren |
+| Gemini | 3×2×6 | 6 | zwei Raketen nebeneinander |
+| Abfangjäger | 1×2×4 | 1 | zündet sofort |
+
+**Map-Abstimmung** – in der Wartephase Karte im Inventar (Dialog bzw. klickbare Chat-Liste) oder `/mw vote <map>`. Bei 10 s Countdown wird ausgewertet; gewinnt eine andere Map, zieht die ganze Lobby automatisch um.
+
+**Modernes Command-System** – `/mw` wird über Paper/Brigadier registriert (Vorschläge direkt im Client), nicht mehr über plugin.yml.
 
 ## Neu in 1.2.0 – volle Nutzung der neuen Version
 
@@ -55,6 +78,7 @@ Die Raketen werden vom Plugin bewegt (wie Flugmaschinen, aber ohne echtes Redsto
 | `/mw join [map]` | Runde beitreten (auch während der Runde, siehe `allow-late-join`) |
 | `/mw spectate [map]` | Zuschauen |
 | `/mw team <grün\|rot>` | Team wechseln (vor dem Start) |
+| `/mw vote [map]` | Map-Abstimmung |
 | `/mw leave` | Verlassen – Inventar & Position werden wiederhergestellt |
 | `/mw list` | Maps & laufende Runden |
 | `/mw stats [spieler]` | Statistiken |

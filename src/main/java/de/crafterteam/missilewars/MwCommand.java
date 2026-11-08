@@ -18,9 +18,10 @@ import org.bukkit.World;
 import org.bukkit.WorldCreator;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
-import org.bukkit.command.Command;
+import io.papermc.paper.command.brigadier.BasicCommand;
+import io.papermc.paper.command.brigadier.CommandSourceStack;
 import org.bukkit.command.CommandSender;
-import org.bukkit.command.TabExecutor;
+import java.util.Collection;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayDeque;
@@ -31,7 +32,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-public final class MwCommand implements TabExecutor {
+public final class MwCommand implements BasicCommand {
 
     private static final String ADMIN = "missilewars.admin";
     private final MissileWarsPlugin plugin;
@@ -41,7 +42,17 @@ public final class MwCommand implements TabExecutor {
     }
 
     @Override
-    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+    public void execute(CommandSourceStack source, String[] args) {
+        handle(source.getSender(), args);
+    }
+
+    @Override
+    public Collection<String> suggest(CommandSourceStack source, String[] args) {
+        String[] a = args.length == 0 ? new String[]{""} : args;
+        return complete(source.getSender(), a);
+    }
+
+    public boolean handle(CommandSender sender, String[] args) {
         String sub = args.length == 0 ? "help" : args[0].toLowerCase(Locale.ROOT);
         switch (sub) {
             case "join" -> join(sender, args.length > 1 ? args[1] : null, false);
@@ -57,6 +68,7 @@ public final class MwCommand implements TabExecutor {
             case "reload" -> reload(sender);
             case "map" -> map(sender, args);
             case "holo", "hologram" -> holo(sender, args);
+            case "vote", "abstimmen" -> vote(sender, args);
             default -> help(sender);
         }
         return true;
@@ -67,6 +79,7 @@ public final class MwCommand implements TabExecutor {
         s.sendMessage(Msg.mm(" <yellow>/mw join [map]</yellow> <gray>– Runde beitreten"));
         s.sendMessage(Msg.mm(" <yellow>/mw spectate [map]</yellow> <gray>– zuschauen"));
         s.sendMessage(Msg.mm(" <yellow>/mw team <grün|rot></yellow> <gray>– Team wechseln"));
+        s.sendMessage(Msg.mm(" <yellow>/mw vote [map]</yellow> <gray>– Map-Abstimmung"));
         s.sendMessage(Msg.mm(" <yellow>/mw leave</yellow> <gray>– Runde verlassen"));
         s.sendMessage(Msg.mm(" <yellow>/mw list</yellow> <gray>– Maps & Runden"));
         s.sendMessage(Msg.mm(" <yellow>/mw stats [spieler]</yellow> <gray>– Statistiken"));
@@ -136,6 +149,17 @@ public final class MwCommand implements TabExecutor {
         }
         g.leave(p, true);
         Msg.send(p, "Du hast die Runde verlassen.");
+    }
+
+    private void vote(CommandSender s, String[] args) {
+        if (!(s instanceof Player p)) return;
+        Game g = plugin.games().get(p);
+        if (g == null) {
+            Msg.send(p, "<red>Du bist in keiner Runde.");
+            return;
+        }
+        if (args.length > 1) g.vote(p, args[1].toLowerCase(Locale.ROOT));
+        else de.crafterteam.missilewars.game.VoteMenu.open(plugin, g, p);
     }
 
     private void team(CommandSender s, String[] args) {
@@ -560,16 +584,15 @@ public final class MwCommand implements TabExecutor {
 
     // ── Tab ──────────────────────────────────────────────────────────
 
-    @Override
-    public List<String> onTabComplete(CommandSender s, Command command, String alias, String[] args) {
+    public List<String> complete(CommandSender s, String[] args) {
         List<String> out = new ArrayList<>();
         boolean admin = s.hasPermission(ADMIN);
         if (args.length == 1) {
-            out.addAll(List.of("join", "spectate", "leave", "team", "list", "stats", "top"));
+            out.addAll(List.of("join", "spectate", "leave", "team", "vote", "list", "stats", "top"));
             if (admin) out.addAll(List.of("start", "stop", "setlobby", "reload", "map", "holo"));
         } else if (args.length == 2) {
             switch (args[0].toLowerCase(Locale.ROOT)) {
-                case "join", "spectate", "start", "stop" -> plugin.maps().all().forEach(m -> out.add(m.name()));
+                case "join", "spectate", "start", "stop", "vote" -> plugin.maps().all().forEach(m -> out.add(m.name()));
                 case "team" -> out.addAll(List.of("gruen", "rot"));
                 case "top" -> out.addAll(List.of("wins", "kills", "raketen", "portale", "runden", "tode"));
                 case "stats" -> Bukkit.getOnlinePlayers().forEach(pl -> out.add(pl.getName()));

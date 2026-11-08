@@ -28,12 +28,14 @@ public final class GameItems {
     public static final String ARROWS = "arrows";
     public static final String MENU_TEAM = "menu_team";
     public static final String MENU_LEAVE = "menu_leave";
+    public static final String MENU_VOTE = "menu_vote";
 
     public static final String WIND_CHARGE = "windcharge";
     public static final String MACE = "mace";
 
     public static final List<String> ALL_IDS = List.of(
-            "tomahawk", "juggernaut", "shieldbuster", "lightning", "guardian", SHIELD, FIREBALL, ARROWS,
+            "tomahawk", "juggernaut", "shieldbuster", "lightning", "guardian", "gemini", "interceptor",
+            SHIELD, FIREBALL, ARROWS,
             WIND_CHARGE, MACE);
 
     /** Vanilla-Items ohne Tag – werden über das Material gezählt und funktionieren normal. */
@@ -56,7 +58,7 @@ public final class GameItems {
         MissileType mt = MissileType.byId(id);
         if (mt != null) {
             int ticks = Math.max(1, plugin.getConfig().getInt("missile.speed." + id, 4));
-            long tnt = mt.parts().stream().filter(MissileType.Part::isTnt).count();
+            long tnt = mt.tntCount();
             String speed = String.format(java.util.Locale.ROOT, "%.1f", 20.0 / ticks);
             return tagged(new ItemStack(mt.item()), id, "<gold><bold>" + mt.displayName(),
                     "<gray>" + mt.description(),
@@ -76,6 +78,8 @@ public final class GameItems {
                 yield mace;
             }
             case MENU_TEAM -> tagged(new ItemStack(Material.WHITE_WOOL), id, "<yellow><bold>Team wählen",
+                    "<gray>Rechtsklick");
+            case MENU_VOTE -> tagged(new ItemStack(Material.MAP), id, "<gold><bold>Map-Abstimmung",
                     "<gray>Rechtsklick");
             case MENU_LEAVE -> tagged(new ItemStack(Material.RED_BED), id, "<red><bold>Verlassen",
                     "<gray>Rechtsklick");
@@ -136,12 +140,13 @@ public final class GameItems {
     }
 
     /** Items in der Wartephase. */
-    public void giveLobbyItems(Player p, Team team) {
+    public void giveLobbyItems(Player p, Team team, boolean vote) {
         p.getInventory().clear();
         Material wool = team == Team.GREEN ? Material.LIME_WOOL : Material.RED_WOOL;
         p.getInventory().setItem(0, tagged(new ItemStack(wool), MENU_TEAM, "<yellow><bold>Team wählen",
                 "<gray>Rechtsklick"));
         p.getInventory().setItem(8, create(MENU_LEAVE));
+        if (vote) p.getInventory().setItem(4, create(MENU_VOTE));
     }
 
     public void giveKit(Player p, Team team) {

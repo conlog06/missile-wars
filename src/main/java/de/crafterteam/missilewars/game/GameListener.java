@@ -72,6 +72,16 @@ public final class GameListener implements Listener {
             if (m != null) breakable.add(m);
             else plugin.getLogger().warning("Unbekanntes Material in 'breakable': " + s);
         }
+        // Alles, woraus Raketen bestehen, ist immer abbaubar (entschärfen)
+        for (de.crafterteam.missilewars.missile.MissileType t : de.crafterteam.missilewars.missile.MissileType.values()) {
+            for (var part : t.parts()) {
+                if (part.material() != de.crafterteam.missilewars.missile.MissileType.TEAM_ACCENT) breakable.add(part.material());
+            }
+        }
+        for (Team t : Team.values()) {
+            breakable.add(t.accent());
+            breakable.add(t.glass());
+        }
     }
 
     private Game gameOf(Player p) {
@@ -103,6 +113,10 @@ public final class GameListener implements Listener {
             // Schleichen + Rechtsklick öffnet immer das Inventar-Menü (Fallback für alte Clients)
             if (dialog && !p.isSneaking()) TeamDialog.open(plugin, g, p);
             else p.openInventory(new TeamMenu(g, p).getInventory());
+            return;
+        }
+        if (GameItems.MENU_VOTE.equals(id)) {
+            VoteMenu.open(plugin, g, p);
             return;
         }
         if (GameItems.MENU_LEAVE.equals(id)) {

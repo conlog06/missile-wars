@@ -4,10 +4,6 @@ main: de.crafterteam.missilewars.MissileWarsPlugin
 api-version: '26.3'
 author: Constantin
 description: Missile Wars für Paper 26.3 – Raketen, Schilde, Feuerbälle, generierte & eigene Maps
-commands:
-  mw:
-    description: Missile Wars
-    aliases: [missilewars, missiles]
 permissions:
   missilewars.play:
     description: Missile Wars spielen
