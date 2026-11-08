@@ -60,5 +60,12 @@ public record PlayerSnapshot(ItemStack[] contents, Location location, GameMode m
         p.setExp(0f);
         p.setAllowFlight(false);
         p.setFlying(false);
+        setAttackSpeed(p, 4.0);
+    }
+
+    /** 4.0 = Vanilla, sehr hoch = kein Angriffs-Cooldown (1.8-PvP). */
+    public static void setAttackSpeed(Player p, double value) {
+        AttributeInstance a = p.getAttribute(Attribute.ATTACK_SPEED);
+        if (a != null) a.setBaseValue(value);
     }
 }

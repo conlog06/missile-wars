@@ -56,6 +56,7 @@ public final class MwCommand implements TabExecutor {
             case "setlobby" -> setLobby(sender);
             case "reload" -> reload(sender);
             case "map" -> map(sender, args);
+            case "holo", "hologram" -> holo(sender, args);
             default -> help(sender);
         }
         return true;
@@ -77,6 +78,7 @@ public final class MwCommand implements TabExecutor {
             s.sendMessage(Msg.mm(" <red>/mw setlobby</red> <gray>– Lobby-Punkt setzen"));
             s.sendMessage(Msg.mm(" <red>/mw reload</red> <gray>– Config & Maps neu laden"));
             s.sendMessage(Msg.mm(" <red>/mw map</red> <gray>– Map-Setup (Hilfe)"));
+            s.sendMessage(Msg.mm(" <red>/mw holo add <stat> | remove | list</red> <gray>– Bestenlisten-Hologramme"));
         }
     }
 
@@ -206,6 +208,33 @@ public final class MwCommand implements TabExecutor {
             String color = i == 0 ? "<gold>" : i == 1 ? "<gray>" : i == 2 ? "<#cd7f32>" : "<dark_gray>";
             s.sendMessage(Msg.mm(" " + color + (i + 1) + ". <white>" + Msg.esc(top.get(i).name)
                     + " <dark_gray>» <yellow>" + top.get(i).get(stat)));
+        }
+    }
+
+    private void holo(CommandSender s, String[] args) {
+        if (!admin(s)) return;
+        String action = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "";
+        switch (action) {
+            case "add" -> {
+                if (!(s instanceof Player p)) return;
+                Stat stat = args.length > 2 ? Stat.parse(args[2]) : Stat.WINS;
+                if (stat == null) { Msg.send(s, "<red>/mw holo add <wins|kills|raketen|portale|runden|tode>"); return; }
+                String id = plugin.holograms().add(p.getLocation(), stat);
+                Msg.send(s, "<green>Hologramm " + id + " (" + stat.label() + ") erstellt.");
+            }
+            case "remove" -> {
+                if (!(s instanceof Player p)) return;
+                String id = plugin.holograms().removeNear(p.getLocation(), 6);
+                Msg.send(s, id == null ? "<red>Kein Hologramm in 6 Blöcken Nähe." : "<green>Hologramm " + id + " entfernt.");
+            }
+            case "list" -> {
+                Msg.send(s, "<white>Hologramme:");
+                for (var h : plugin.holograms().all()) {
+                    s.sendMessage(Msg.mm(" <yellow>" + h.id() + " <gray>" + h.stat().label() + " <dark_gray>@ "
+                            + Msg.esc(h.world()) + " " + (int) h.x() + " " + (int) h.y() + " " + (int) h.z()));
+                }
+            }
+            default -> Msg.send(s, "<red>/mw holo add <stat> | remove | list");
         }
     }
 
@@ -537,13 +566,14 @@ public final class MwCommand implements TabExecutor {
         boolean admin = s.hasPermission(ADMIN);
         if (args.length == 1) {
             out.addAll(List.of("join", "spectate", "leave", "team", "list", "stats", "top"));
-            if (admin) out.addAll(List.of("start", "stop", "setlobby", "reload", "map"));
+            if (admin) out.addAll(List.of("start", "stop", "setlobby", "reload", "map", "holo"));
         } else if (args.length == 2) {
             switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "join", "spectate", "start", "stop" -> plugin.maps().all().forEach(m -> out.add(m.name()));
                 case "team" -> out.addAll(List.of("gruen", "rot"));
                 case "top" -> out.addAll(List.of("wins", "kills", "raketen", "portale", "runden", "tode"));
                 case "stats" -> Bukkit.getOnlinePlayers().forEach(pl -> out.add(pl.getName()));
+                case "holo", "hologram" -> { if (admin) out.addAll(List.of("add", "remove", "list")); }
                 case "map" -> {
                     if (admin) out.addAll(List.of("generate", "create", "import", "setspawn", "setportal",
                             "setdeathy", "tp", "finish", "info", "delete", "list"));
@@ -551,6 +581,8 @@ public final class MwCommand implements TabExecutor {
                 default -> {
                 }
             }
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("holo") && args[1].equalsIgnoreCase("add") && admin) {
+            out.addAll(List.of("wins", "kills", "raketen", "portale", "runden", "tode"));
         } else if (args.length == 3 && args[0].equalsIgnoreCase("map") && admin) {
             if (!List.of("generate", "create", "import").contains(args[1].toLowerCase(Locale.ROOT))) {
                 plugin.maps().all().forEach(m -> out.add(m.name()));

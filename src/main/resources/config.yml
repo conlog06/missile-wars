@@ -35,7 +35,23 @@ sudden-death:
 warning:
   distance: 20      # Verteidiger warnen, wenn eine Rakete so nah am Portal ist (0 = aus)
 
+# Team-Auswahl: dialog (nativer Dialog, ab 1.21.6) oder inventory (für alte Clients via ViaBackwards)
+# Schleichen + Rechtsklick auf die Wolle öffnet immer das Inventar-Menü.
+menu-style: dialog
+
+# Abklingzeit nach Benutzung eines Items (Vanilla-Cooldown-Anzeige), 0 = aus
+item-cooldown-ticks: 20
+
+combat:
+  old-pvp: false    # true = kein Angriffs-Cooldown (1.8-Feeling)
+
+portal:
+  # 0 = klassisch: ein zerstörter Portalblock = Niederlage
+  # z. B. 30 = Portal hat HP, verloren bei 30 % zerstörten Blöcken (Anzeige über Hologramm & Sidebar)
+  loss-percent: 0
+
 missile:
+  preview: true           # leuchtende Vorschau beim Halten einer Rakete
   fuse-ticks: 60          # Zündzeit der TNT nach dem Aufprall (Vanilla-Redstone: 80)
   max-steps: 260          # danach bleibt die Rakete einfach stehen
   pierce-glass-max: 12    # Shieldbuster: so viele Glasblöcke durchbricht er
@@ -65,6 +81,8 @@ items:
   shield:       { weight: 8,  max: 2 }
   fireball:     { weight: 6,  max: 2 }
   arrows:       { weight: 8,  max: 9, amount: 3 }
+  windcharge:   { weight: 6,  max: 4, amount: 2 }   # Windkugel (1.21): Sprünge, Gegner wegschleudern
+  mace:         { weight: 0,  max: 1 }              # Streitkolben (1.21) – standardmäßig aus
 
 # Standard-Arena (generiert)
 generator:

@@ -17,6 +17,7 @@ import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
 /** Erstellt und erkennt die Spiel-Items. */
@@ -28,8 +29,16 @@ public final class GameItems {
     public static final String MENU_TEAM = "menu_team";
     public static final String MENU_LEAVE = "menu_leave";
 
+    public static final String WIND_CHARGE = "windcharge";
+    public static final String MACE = "mace";
+
     public static final List<String> ALL_IDS = List.of(
-            "tomahawk", "juggernaut", "shieldbuster", "lightning", "guardian", SHIELD, FIREBALL, ARROWS);
+            "tomahawk", "juggernaut", "shieldbuster", "lightning", "guardian", SHIELD, FIREBALL, ARROWS,
+            WIND_CHARGE, MACE);
+
+    /** Vanilla-Items ohne Tag – werden über das Material gezählt und funktionieren normal. */
+    private static final Map<String, Material> VANILLA = Map.of(
+            ARROWS, Material.ARROW, WIND_CHARGE, Material.WIND_CHARGE, MACE, Material.MACE);
 
     private final MissileWarsPlugin plugin;
     private final NamespacedKey itemKey;
@@ -46,8 +55,13 @@ public final class GameItems {
     public ItemStack create(String id) {
         MissileType mt = MissileType.byId(id);
         if (mt != null) {
+            int ticks = Math.max(1, plugin.getConfig().getInt("missile.speed." + id, 4));
+            long tnt = mt.parts().stream().filter(MissileType.Part::isTnt).count();
+            String speed = String.format(java.util.Locale.ROOT, "%.1f", 20.0 / ticks);
             return tagged(new ItemStack(mt.item()), id, "<gold><bold>" + mt.displayName(),
-                    "<gray>" + mt.description(), "<dark_gray>Rechtsklick auf einen Block");
+                    "<gray>" + mt.description(),
+                    "<dark_gray>Tempo: <white>" + speed + " Blöcke/s <dark_gray>| Ladung: <red>" + tnt + " TNT",
+                    "<dark_gray>Rechtsklick auf einen Block (Vorschau beim Halten)");
         }
         return switch (id) {
             case SHIELD -> tagged(new ItemStack(Material.SNOWBALL), id, "<aqua><bold>Schild",
@@ -55,6 +69,12 @@ public final class GameItems {
             case FIREBALL -> tagged(new ItemStack(Material.FIRE_CHARGE), id, "<red><bold>Feuerball",
                     "<gray>Rechtsklick zum Abfeuern.", "<gray>Kann zurückgeschlagen werden!");
             case ARROWS -> new ItemStack(Material.ARROW, plugin.getConfig().getInt("items.arrows.amount", 3));
+            case WIND_CHARGE -> new ItemStack(Material.WIND_CHARGE, plugin.getConfig().getInt("items.windcharge.amount", 2));
+            case MACE -> {
+                ItemStack mace = new ItemStack(Material.MACE);
+                mace.editMeta(m -> m.setUnbreakable(true));
+                yield mace;
+            }
             case MENU_TEAM -> tagged(new ItemStack(Material.WHITE_WOOL), id, "<yellow><bold>Team wählen",
                     "<gray>Rechtsklick");
             case MENU_LEAVE -> tagged(new ItemStack(Material.RED_BED), id, "<red><bold>Verlassen",
@@ -85,7 +105,8 @@ public final class GameItems {
         int n = 0;
         for (ItemStack it : p.getInventory().getContents()) {
             if (it == null) continue;
-            if (ARROWS.equals(id) ? it.getType() == Material.ARROW : id.equals(idOf(it))) n += it.getAmount();
+            Material vanilla = VANILLA.get(id);
+            if (vanilla != null ? it.getType() == vanilla : id.equals(idOf(it))) n += it.getAmount();
         }
         return n;
     }

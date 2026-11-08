@@ -8,7 +8,7 @@ Missile Wars für **Paper 26.3** (Java 21+). Zwei Teams, Raketen, Schilde, Feuer
 2. Server starten – die Standard-Arena `standard` wird automatisch angelegt.
 3. Ingame `/mw join`.
 
-Alte Clients (1.8 / 1.12) kommen per **ViaVersion + ViaBackwards** auf den Server.
+Alte Clients (1.8 / 1.12) kommen per **ViaVersion + ViaBackwards** auf den Server. Für sie: `menu-style: inventory` und ggf. `combat.old-pvp: true`; Display-Effekte (Vorschau, Hologramme) sehen sie nicht, das Spiel funktioniert trotzdem.
 
 ## Spielablauf
 
@@ -21,6 +21,19 @@ Alte Clients (1.8 / 1.12) kommen per **ViaVersion + ViaBackwards** auf den Serve
 - Kein Todesbildschirm: Tod/Void → direkt zurück zum Team-Spawn, Inventar bleibt.
 
 Die Raketen werden vom Plugin bewegt (wie Flugmaschinen, aber ohne echtes Redstone) – das läuft stabil, ohne Lag und unabhängig von Redstone-Änderungen in neuen Versionen.
+
+## Neu in 1.2.0 – volle Nutzung der neuen Version
+
+1. **Raketen-Vorschau** – beim Halten einer Rakete leuchtet ein Geister-Umriss (Block-Displays, nur für dich sichtbar): grün = passt, rot = geht nicht
+2. **Portal-Hologramme** – schwebende Anzeige über jedem Portal (Text-Displays)
+3. **Portal-HP-Modus** – `portal.loss-percent: 30` → Portal verliert erst bei 30 % Zerstörung; HP-Balken im Hologramm & in der Sidebar, Treffer-Warnung fürs Team
+4. **Bestenlisten-Hologramme** – `/mw holo add <stat>` stellt eine Top-10 an deine Position (aktualisiert alle 30 s)
+5. **Windkugel** (1.21) – neues Item im Pool: Sprünge über die Lücke, Gegner ins Void schleudern
+6. **Streitkolben** (1.21) – optional (`items.mace.weight`)
+7. **Item-Cooldowns** – mit nativer Cooldown-Anzeige im Inventar (Anti-Spam)
+8. **1.8-PvP umschaltbar** – `combat.old-pvp: true` entfernt den Angriffs-Cooldown
+9. **Team-Auswahl als Dialog** (ab 1.21.6) – natives Popup mit Mitglieder-Tooltip; Schleichen + Klick = Inventar-Menü, `menu-style: inventory` für alte Clients
+10. **Raketen-Infos im Item** – Tempo (Blöcke/s) und Sprengladung im Tooltip
 
 ## Neu in 1.1.0
 
@@ -50,6 +63,7 @@ Die Raketen werden vom Plugin bewegt (wie Flugmaschinen, aber ohne echtes Redsto
 | `/mw stop <map>` | *(Admin)* Runde beenden |
 | `/mw setlobby` | *(Admin)* Ziel nach der Runde |
 | `/mw reload` | *(Admin)* Config & Maps neu laden |
+| `/mw holo add <stat>` / `remove` / `list` | *(Admin)* Bestenlisten-Hologramme |
 
 Rechte: `missilewars.play` (alle), `missilewars.admin` (OP).
 

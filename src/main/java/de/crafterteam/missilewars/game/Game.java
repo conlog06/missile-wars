@@ -27,7 +27,12 @@ import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Directional;
+import org.bukkit.entity.Display;
 import org.bukkit.entity.Firework;
+import org.bukkit.entity.TextDisplay;
+import org.bukkit.util.Transformation;
+import org.joml.AxisAngle4f;
+import org.joml.Vector3f;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.FireworkMeta;
@@ -93,6 +98,9 @@ public final class Game {
     private boolean suddenDeath;
     private final Map<Team, Long> lastWarning = new EnumMap<>(Team.class);
     private final Map<Team, UUID> lastPortalHitter = new EnumMap<>(Team.class);
+    private final Map<Team, Integer> portalHp = new EnumMap<>(Team.class);
+    private final Map<Team, Integer> lastPortalLeft = new EnumMap<>(Team.class);
+    private final Map<Team, TextDisplay> portalHolograms = new EnumMap<>(Team.class);
 
     private Game(MissileWarsPlugin plugin, MapConfig map, World world) {
         this.plugin = plugin;
@@ -148,6 +156,7 @@ public final class Game {
             g.destroyWorld();
             throw new GameException("Keine Portalblöcke in den Portal-Bereichen gefunden.");
         }
+        g.spawnPortalHolograms();
         g.startTasks();
         return g;
     }
@@ -264,6 +273,7 @@ public final class Game {
         if (running) {
             p.setGameMode(GameMode.SURVIVAL);
             plugin.items().giveKit(p, t);
+            applyCombat(p);
             giveItem(p);
             p.showBossBar(bossBar);
             plugin.stats().add(p, Stat.GAMES, 1);
@@ -327,6 +337,7 @@ public final class Game {
         Team t = teams.remove(id);
         spectators.remove(id);
         plugin.games().unbind(p);
+        plugin.preview().hide(p);
         p.hideBossBar(bossBar);
         if (t != null && state == State.RUNNING) plugin.stats().add(p, Stat.LOSSES, 1);
         for (org.bukkit.scoreboard.Team st : board.getTeams()) st.removeEntry(p.getName());
@@ -464,6 +475,10 @@ public final class Game {
         }
     }
 
+    private void applyCombat(Player p) {
+        if (plugin.getConfig().getBoolean("combat.old-pvp", false)) PlayerSnapshot.setAttackSpeed(p, 1024.0);
+    }
+
     private int[] round(UUID id) {
         return round.computeIfAbsent(id, k -> new int[3]);
     }
@@ -485,6 +500,7 @@ public final class Game {
             p.setGameMode(GameMode.SURVIVAL);
             p.teleport(map.spawn(t).toLocation(world));
             plugin.items().giveKit(p, t);
+            applyCombat(p);
             for (int i = 0; i < startItems; i++) giveItem(p);
             p.showTitle(Title.title(Msg.mm("<green><bold>Los!"),
                     Msg.mm("<gray>Zerstöre das Portal von Team " + t.other().colored()),
@@ -534,20 +550,118 @@ public final class Game {
         // Portale
         if (state == State.RUNNING && tickCounter % 10 == 0) {
             for (Team t : Team.values()) {
-                for (Block b : portalBlocks.get(t)) {
-                    if (b.getType() != Material.NETHER_PORTAL) {
-                        String by = "";
-                        UUID hitter = lastPortalHitter.get(t);
-                        Player hp = hitter == null ? null : Bukkit.getPlayer(hitter);
-                        if (hp != null && team(hp) == t.other()) {
-                            plugin.stats().add(hp, Stat.PORTALS, 1);
-                            by = " <dark_gray>(von <white>" + Msg.esc(hp.getName()) + "<dark_gray>)";
-                        }
-                        end(t.other(), "Das Portal von Team " + t.colored() + " <gray>wurde zerstört!" + by);
-                        return;
+                int left = portalLeft(t);
+                portalHp.put(t, hp(t, left));
+                if (isPortalLost(t, left)) {
+                    String by = "";
+                    UUID hitter = lastPortalHitter.get(t);
+                    Player hp = hitter == null ? null : Bukkit.getPlayer(hitter);
+                    if (hp != null && team(hp) == t.other()) {
+                        plugin.stats().add(hp, Stat.PORTALS, 1);
+                        by = " <dark_gray>(von <white>" + Msg.esc(hp.getName()) + "<dark_gray>)";
+                    }
+                    updatePortalHolograms();
+                    end(t.other(), "Das Portal von Team " + t.colored() + " <gray>wurde zerstört!" + by);
+                    return;
+                }
+                Integer before = lastPortalLeft.put(t, left);
+                if (before != null && left < before) {
+                    for (Player pl : teamPlayers(t)) {
+                        pl.showTitle(Title.title(Component.empty(), Msg.mm("<red>Euer Portal wird getroffen! <white>" + portalHp.get(t) + "%"),
+                                Title.Times.times(Duration.ZERO, Duration.ofMillis(1500), Duration.ofMillis(300))));
+                        pl.playSound(pl.getLocation(), Sound.BLOCK_GLASS_BREAK, 1f, 0.6f);
                     }
                 }
             }
+            updatePortalHolograms();
+        }
+        // Raketen-Vorschau
+        if (state == State.RUNNING && tickCounter % 3 == 0) updatePreviews();
+    }
+
+    // ── Portal-HP & Hologramme ───────────────────────────────────────
+
+    private int portalLeft(Team t) {
+        int n = 0;
+        for (Block b : portalBlocks.get(t)) if (b.getType() == Material.NETHER_PORTAL) n++;
+        return n;
+    }
+
+    /** Verlust-Schwelle in Prozent zerstörter Blöcke; 0 = klassisch (ein Block reicht). */
+    private double lossPercent() {
+        return Math.max(0, Math.min(100, plugin.getConfig().getDouble("portal.loss-percent", 0)));
+    }
+
+    private boolean isPortalLost(Team t, int left) {
+        int total = portalBlocks.get(t).size();
+        double lp = lossPercent();
+        if (lp <= 0) return left < total;
+        return (total - left) * 100.0 / total >= lp;
+    }
+
+    private int hp(Team t, int left) {
+        int total = portalBlocks.get(t).size();
+        double lp = lossPercent();
+        if (lp <= 0) return left < total ? 0 : 100;
+        double destroyedPct = (total - left) * 100.0 / total;
+        return (int) Math.max(0, Math.round(100 - destroyedPct * 100 / lp));
+    }
+
+    private void spawnPortalHolograms() {
+        for (Team t : Team.values()) {
+            MapConfig.Box b = map.portal(t);
+            Location loc = new Location(world, b.centerX(), b.maxY() + 2.5, b.centerZ());
+            TextDisplay td = world.spawn(loc, TextDisplay.class, d -> {
+                d.setBillboard(Display.Billboard.CENTER);
+                d.setPersistent(false);
+                d.setSeeThrough(true);
+                d.setShadowed(true);
+                d.setLineWidth(220);
+                d.setTransformation(new Transformation(new Vector3f(), new AxisAngle4f(),
+                        new Vector3f(2.2f, 2.2f, 2.2f), new AxisAngle4f()));
+            });
+            portalHolograms.put(t, td);
+            portalHp.put(t, 100);
+        }
+        updatePortalHolograms();
+    }
+
+    private void updatePortalHolograms() {
+        for (Team t : Team.values()) {
+            TextDisplay td = portalHolograms.get(t);
+            if (td == null || !td.isValid()) continue;
+            int hp = portalHp.getOrDefault(t, 100);
+            int filled = Math.round(hp / 5f);
+            String color = hp > 60 ? "green" : hp > 25 ? "yellow" : "red";
+            String bar = "<" + color + ">" + "|".repeat(filled) + "<dark_gray>" + "|".repeat(20 - filled);
+            String mode = lossPercent() <= 0 ? "<gray>1 Treffer = Niederlage" : bar + " <white>" + hp + "%";
+            td.text(Msg.mm("<bold>" + t.colored() + "</bold>\n<gray>Portal\n" + mode));
+        }
+    }
+
+    // ── Raketen-Vorschau ─────────────────────────────────────────────
+
+    /** Startblock (Heck) einer Rakete aus Blickrichtung bzw. angeklicktem Block. */
+    public Block missileOrigin(Player p, Block clicked, BlockFace face) {
+        if (clicked != null && face != null) return clicked.getRelative(face);
+        Block target = p.getTargetBlockExact(5);
+        BlockFace f = p.getTargetBlockFace(5);
+        if (target != null && f != null) return target.getRelative(f);
+        Team t = team(p);
+        return p.getLocation().getBlock().getRelative(0, 0, (t == null ? 1 : map.forward(t)) * 2);
+    }
+
+    private void updatePreviews() {
+        if (!plugin.getConfig().getBoolean("missile.preview", true)) return;
+        for (Player p : players()) {
+            MissileType type = MissileType.byId(plugin.items().idOf(p.getInventory().getItemInMainHand()));
+            Team t = team(p);
+            if (type == null || t == null || p.getGameMode() == GameMode.SPECTATOR) {
+                plugin.preview().hide(p);
+                continue;
+            }
+            Placement pl = placement(t, type, missileOrigin(p, null, null));
+            plugin.preview().show(p, world, pl.positions(), pl.error() == null);
         }
     }
 
@@ -626,6 +740,52 @@ public final class Game {
 
     // ── Items benutzen ───────────────────────────────────────────────
 
+    /** Berechnete Platzierung einer Rakete; error != null = nicht erlaubt. */
+    public record Placement(Map<Missile.Pos, Material> parts, Map<Missile.Pos, BlockData> datas, String error) {
+        public List<Missile.Pos> positions() {
+            return new ArrayList<>(parts.keySet());
+        }
+    }
+
+    /** Wo würde die Rakete landen, und ist das erlaubt? (für Spawn & Vorschau) */
+    public Placement placement(Team t, MissileType type, Block origin) {
+        int dir = map.forward(t);
+        double mid = map.midZ();
+        double ownPortalZ = map.portal(t).centerZ();
+        boolean ownHalf = plugin.getConfig().getBoolean("missile.own-half-only", true);
+        Map<Missile.Pos, Material> parts = new LinkedHashMap<>();
+        Map<Missile.Pos, BlockData> datas = new LinkedHashMap<>();
+        String error = null;
+        for (MissileType.Part part : type.parts()) {
+            int wx = origin.getX() + (dir > 0 ? part.x() : -part.x());
+            int wy = origin.getY() + part.y();
+            int wz = origin.getZ() + dir * part.z();
+            Missile.Pos pos = new Missile.Pos(wx, wy, wz);
+            parts.put(pos, part.material());
+            if (error != null) continue;
+            if (wy < world.getMinHeight() || wy >= world.getMaxHeight()) {
+                error = "Hier ist kein Platz für die Rakete.";
+                continue;
+            }
+            Block b = world.getBlockAt(wx, wy, wz);
+            if (!b.getType().isAir() && !b.isLiquid()) {
+                error = "Hier ist kein Platz für die Rakete.";
+            } else if (ownHalf && dir * (wz + 0.5 - mid) > 0) {
+                error = "Raketen nur auf deiner Hälfte spawnen!";
+            } else if (dir * (wz + 0.5 - ownPortalZ) <= 0) {
+                error = "Nicht hinter dem eigenen Portal!";
+            }
+            BlockData data = part.material().createBlockData();
+            if (part.facing() != null && data instanceof Directional d) {
+                BlockFace f = part.facing();
+                if (dir < 0 && f != BlockFace.UP && f != BlockFace.DOWN) f = f.getOppositeFace();
+                if (d.getFaces().contains(f)) d.setFacing(f);
+            }
+            datas.put(pos, data);
+        }
+        return new Placement(parts, datas, error);
+    }
+
     /**
      * Rakete spawnen. origin = Block, an dem das Heck mittig sitzt.
      * @return true wenn gespawnt (Item verbrauchen)
@@ -634,47 +794,18 @@ public final class Game {
         Team t = team(p);
         if (t == null || state != State.RUNNING) return false;
         int dir = map.forward(t);
-        double mid = map.midZ();
-        double ownPortalZ = map.portal(t).centerZ();
-        boolean ownHalf = plugin.getConfig().getBoolean("missile.own-half-only", true);
-
-        Map<Missile.Pos, Material> parts = new LinkedHashMap<>();
-        Map<Missile.Pos, BlockData> datas = new LinkedHashMap<>();
-        for (MissileType.Part part : type.parts()) {
-            int wx = origin.getX() + (dir > 0 ? part.x() : -part.x());
-            int wy = origin.getY() + part.y();
-            int wz = origin.getZ() + dir * part.z();
-            if (wy < world.getMinHeight() || wy >= world.getMaxHeight()) {
-                Msg.send(p, "<red>Hier ist kein Platz für die Rakete.");
-                return false;
-            }
-            Block b = world.getBlockAt(wx, wy, wz);
-            if (!b.getType().isAir() && !b.isLiquid()) {
-                Msg.send(p, "<red>Hier ist kein Platz für die Rakete.");
-                return false;
-            }
-            if (ownHalf && dir * (wz + 0.5 - mid) > 0) {
-                Msg.send(p, "<red>Raketen nur auf deiner Hälfte spawnen!");
-                return false;
-            }
-            if (dir * (wz + 0.5 - ownPortalZ) <= 0) {
-                Msg.send(p, "<red>Nicht hinter dem eigenen Portal!");
-                return false;
-            }
-            BlockData data = part.material().createBlockData();
-            if (part.facing() != null && data instanceof Directional d) {
-                BlockFace f = part.facing();
-                if (dir < 0 && f != BlockFace.UP && f != BlockFace.DOWN) f = f.getOppositeFace();
-                if (d.getFaces().contains(f)) d.setFacing(f);
-            }
-            Missile.Pos pos = new Missile.Pos(wx, wy, wz);
-            parts.put(pos, part.material());
-            datas.put(pos, data);
+        Placement pl = placement(t, type, origin);
+        if (pl.error() != null) {
+            Msg.send(p, "<red>" + pl.error());
+            p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 0.6f, 1f);
+            return false;
         }
-        for (Map.Entry<Missile.Pos, BlockData> e : datas.entrySet()) {
+        Map<Missile.Pos, Material> parts = pl.parts();
+        for (Map.Entry<Missile.Pos, BlockData> e : pl.datas().entrySet()) {
             Missile.Pos pos = e.getKey();
             world.getBlockAt(pos.x(), pos.y(), pos.z()).setBlockData(e.getValue(), false);
         }
+        plugin.preview().hide(p);
 
         double enemyPortalZ = map.portal(t.other()).centerZ();
         double removeBeyond = enemyPortalZ + dir * 12;
@@ -717,6 +848,7 @@ public final class Game {
         broadcast("Team " + winner.colored() + " <gray>hat gewonnen! <dark_gray>(" + formatTime(seconds) + ")");
         for (Player p : players()) {
             plugin.stats().add(p, team(p) == winner ? Stat.WINS : Stat.LOSSES, 1);
+            plugin.preview().hide(p);
             p.hideBossBar(bossBar);
         }
         sendSummary();
@@ -798,6 +930,7 @@ public final class Game {
             teams.remove(id);
             spectators.remove(id);
             plugin.games().unbind(p);
+            plugin.preview().hide(p);
             p.hideBossBar(bossBar);
             PlayerSnapshot snap = snapshots.remove(id);
             if (snap != null) snap.restore(p, plugin.lobby());
@@ -851,6 +984,13 @@ public final class Game {
         lines.add(" ");
         lines.add(Team.GREEN.colored() + "<gray>: <white>" + teamPlayers(Team.GREEN).size());
         lines.add(Team.RED.colored() + "<gray>: <white>" + teamPlayers(Team.RED).size());
+        if (state == State.RUNNING && lossPercent() > 0) {
+            lines.add("   ");
+            for (Team t : Team.values()) {
+                int hp = portalHp.getOrDefault(t, 100);
+                lines.add("<gray>Portal " + t.colored() + "<gray>: " + (hp > 60 ? "<green>" : hp > 25 ? "<yellow>" : "<red>") + hp + "%");
+            }
+        }
         if (state == State.RUNNING) {
             lines.add("  ");
             lines.add("<gray>Item in <yellow>" + itemTimer + "s");

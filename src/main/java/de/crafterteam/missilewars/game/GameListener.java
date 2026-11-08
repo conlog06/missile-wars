@@ -98,7 +98,11 @@ public final class GameListener implements Listener {
         Game g = gameOf(p);
         if (g == null) return;
         if (GameItems.MENU_TEAM.equals(id)) {
-            if (g.team(p) != null) p.openInventory(new TeamMenu(g, p).getInventory());
+            if (g.team(p) == null) return;
+            boolean dialog = "dialog".equalsIgnoreCase(plugin.getConfig().getString("menu-style", "dialog"));
+            // Schleichen + Rechtsklick öffnet immer das Inventar-Menü (Fallback für alte Clients)
+            if (dialog && !p.isSneaking()) TeamDialog.open(plugin, g, p);
+            else p.openInventory(new TeamMenu(g, p).getInventory());
             return;
         }
         if (GameItems.MENU_LEAVE.equals(id)) {
@@ -108,17 +112,12 @@ public final class GameListener implements Listener {
         }
         if (g.state() != Game.State.RUNNING || g.team(p) == null) return;
         Team team = g.team(p);
+        if (item != null && p.hasCooldown(item.getType())) return;
 
         boolean used = false;
         MissileType mt = MissileType.byId(id);
         if (mt != null) {
-            Block origin;
-            if (e.getClickedBlock() != null) {
-                origin = e.getClickedBlock().getRelative(e.getBlockFace());
-            } else {
-                int dir = g.map().forward(team);
-                origin = p.getLocation().getBlock().getRelative(0, 0, dir * 2);
-            }
+            Block origin = g.missileOrigin(p, e.getClickedBlock(), e.getClickedBlock() == null ? null : e.getBlockFace());
             used = g.spawnMissile(p, mt, origin);
         } else if (GameItems.SHIELD.equals(id)) {
             Snowball ball = p.launchProjectile(Snowball.class);
@@ -139,6 +138,8 @@ public final class GameListener implements Listener {
         }
 
         if (used) {
+            int cd = plugin.getConfig().getInt("item-cooldown-ticks", 20);
+            if (cd > 0 && item != null) p.setCooldown(item.getType(), cd);
             ItemStack hand = p.getInventory().getItemInMainHand();
             if (p.getGameMode() != GameMode.CREATIVE) {
                 hand.setAmount(hand.getAmount() - 1);
