@@ -25,6 +25,16 @@ start-arrows: 3
 
 end-delay: 8        # Sekunden nach dem Sieg, bis alle zurück in die Lobby kommen
 
+auto-balance: true  # Teams beim Start ausgleichen (max. 1 Spieler Unterschied)
+team-chat: true     # Chat im Spiel nur fürs eigene Team, "@Nachricht" an alle
+
+sudden-death:
+  after-minutes: 8  # 0 = aus
+  item-factor: 0.5  # Item-Intervall wird damit multipliziert
+
+warning:
+  distance: 20      # Verteidiger warnen, wenn eine Rakete so nah am Portal ist (0 = aus)
+
 missile:
   fuse-ticks: 60          # Zündzeit der TNT nach dem Aufprall (Vanilla-Redstone: 80)
   max-steps: 260          # danach bleibt die Rakete einfach stehen

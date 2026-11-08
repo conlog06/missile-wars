@@ -7,6 +7,8 @@ import de.crafterteam.missilewars.map.ArenaGenerator;
 import de.crafterteam.missilewars.map.MapConfig;
 import de.crafterteam.missilewars.map.MapManager;
 import de.crafterteam.missilewars.map.VoidGenerator;
+import de.crafterteam.missilewars.stats.StatsManager;
+import de.crafterteam.missilewars.stats.StatsManager.Stat;
 import de.crafterteam.missilewars.util.Msg;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
@@ -47,6 +49,8 @@ public final class MwCommand implements TabExecutor {
             case "leave", "verlassen" -> leave(sender);
             case "team" -> team(sender, args);
             case "list", "liste" -> list(sender);
+            case "stats" -> stats(sender, args);
+            case "top", "leaderboard", "lb" -> top(sender, args);
             case "start" -> start(sender, args);
             case "stop" -> stop(sender, args);
             case "setlobby" -> setLobby(sender);
@@ -64,6 +68,9 @@ public final class MwCommand implements TabExecutor {
         s.sendMessage(Msg.mm(" <yellow>/mw team <grün|rot></yellow> <gray>– Team wechseln"));
         s.sendMessage(Msg.mm(" <yellow>/mw leave</yellow> <gray>– Runde verlassen"));
         s.sendMessage(Msg.mm(" <yellow>/mw list</yellow> <gray>– Maps & Runden"));
+        s.sendMessage(Msg.mm(" <yellow>/mw stats [spieler]</yellow> <gray>– Statistiken"));
+        s.sendMessage(Msg.mm(" <yellow>/mw top [wins|kills|raketen|portale]</yellow> <gray>– Bestenliste"));
+        s.sendMessage(Msg.mm(" <dark_gray>Im Spiel: Chat = Team, <white>@Nachricht</white> = an alle"));
         if (s.hasPermission(ADMIN)) {
             s.sendMessage(Msg.mm(" <red>/mw start [map]</red> <gray>– sofort starten"));
             s.sendMessage(Msg.mm(" <red>/mw stop <map></red> <gray>– Runde beenden"));
@@ -153,6 +160,52 @@ public final class MwCommand implements TabExecutor {
                     : (m.ready() && m.complete() ? "<gray>frei" : "<red>im Setup");
             String type = m.type() == MapConfig.Type.GENERATED ? "generiert" : "Welt";
             s.sendMessage(Msg.mm(" <yellow>" + m.name() + " <dark_gray>[" + type + "] " + status));
+        }
+    }
+
+    private void stats(CommandSender s, String[] args) {
+        StatsManager.Entry e;
+        if (args.length > 1) {
+            Player online = Bukkit.getPlayerExact(args[1]);
+            e = online != null ? plugin.stats().get(online.getUniqueId()) : plugin.stats().byName(args[1]);
+        } else if (s instanceof Player p) {
+            e = plugin.stats().get(p.getUniqueId());
+        } else {
+            Msg.send(s, "<red>/mw stats <spieler>");
+            return;
+        }
+        if (e == null) {
+            Msg.send(s, "<red>Keine Statistiken gefunden.");
+            return;
+        }
+        int games = e.get(Stat.GAMES), wins = e.get(Stat.WINS), kills = e.get(Stat.KILLS), deaths = e.get(Stat.DEATHS);
+        String kd = String.format(Locale.ROOT, "%.2f", deaths == 0 ? kills : kills / (double) deaths);
+        String wr = games == 0 ? "0" : String.valueOf(Math.round(wins * 100.0 / games));
+        Msg.send(s, "<white>Statistiken von <yellow>" + Msg.esc(e.name));
+        s.sendMessage(Msg.mm(" <gray>Runden: <white>" + games + " <dark_gray>| <gray>Siege: <green>" + wins
+                + " <dark_gray>| <gray>Niederlagen: <red>" + e.get(Stat.LOSSES) + " <dark_gray>(" + wr + "%)"));
+        s.sendMessage(Msg.mm(" <gray>Kills: <green>" + kills + " <dark_gray>| <gray>Tode: <red>" + deaths
+                + " <dark_gray>| <gray>K/D: <white>" + kd));
+        s.sendMessage(Msg.mm(" <gray>Raketen: <aqua>" + e.get(Stat.MISSILES)
+                + " <dark_gray>| <gray>Portale zerstört: <gold>" + e.get(Stat.PORTALS)));
+    }
+
+    private void top(CommandSender s, String[] args) {
+        Stat stat = args.length > 1 ? Stat.parse(args[1]) : Stat.WINS;
+        if (stat == null) {
+            Msg.send(s, "<red>/mw top <wins|kills|raketen|portale|runden|tode>");
+            return;
+        }
+        List<StatsManager.Entry> top = plugin.stats().top(stat, 10);
+        Msg.send(s, "<white>Top 10 – <yellow>" + stat.label());
+        if (top.isEmpty()) {
+            s.sendMessage(Msg.mm(" <gray>Noch keine Einträge."));
+            return;
+        }
+        for (int i = 0; i < top.size(); i++) {
+            String color = i == 0 ? "<gold>" : i == 1 ? "<gray>" : i == 2 ? "<#cd7f32>" : "<dark_gray>";
+            s.sendMessage(Msg.mm(" " + color + (i + 1) + ". <white>" + Msg.esc(top.get(i).name)
+                    + " <dark_gray>» <yellow>" + top.get(i).get(stat)));
         }
     }
 
@@ -483,12 +536,14 @@ public final class MwCommand implements TabExecutor {
         List<String> out = new ArrayList<>();
         boolean admin = s.hasPermission(ADMIN);
         if (args.length == 1) {
-            out.addAll(List.of("join", "spectate", "leave", "team", "list"));
+            out.addAll(List.of("join", "spectate", "leave", "team", "list", "stats", "top"));
             if (admin) out.addAll(List.of("start", "stop", "setlobby", "reload", "map"));
         } else if (args.length == 2) {
             switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "join", "spectate", "start", "stop" -> plugin.maps().all().forEach(m -> out.add(m.name()));
                 case "team" -> out.addAll(List.of("gruen", "rot"));
+                case "top" -> out.addAll(List.of("wins", "kills", "raketen", "portale", "runden", "tode"));
+                case "stats" -> Bukkit.getOnlinePlayers().forEach(pl -> out.add(pl.getName()));
                 case "map" -> {
                     if (admin) out.addAll(List.of("generate", "create", "import", "setspawn", "setportal",
                             "setdeathy", "tp", "finish", "info", "delete", "list"));

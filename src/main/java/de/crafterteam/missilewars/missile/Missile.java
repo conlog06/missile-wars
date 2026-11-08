@@ -2,6 +2,8 @@ package de.crafterteam.missilewars.missile;
 
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
@@ -68,8 +70,40 @@ public final class Missile {
         this.settings = settings;
     }
 
+    private boolean warned;
+    private int frontZ;
+    private double centerX, centerY;
+
     public MissileType type() {
         return type;
+    }
+
+    public int dir() {
+        return dir;
+    }
+
+    public int frontZ() {
+        return frontZ;
+    }
+
+    public double centerX() {
+        return centerX;
+    }
+
+    public double centerY() {
+        return centerY;
+    }
+
+    public boolean warned() {
+        return warned || steps == 0;
+    }
+
+    public void markWarned() {
+        warned = true;
+    }
+
+    public Player owner() {
+        return owner;
     }
 
     /** Pro Tick aufrufen. */
@@ -137,6 +171,7 @@ public final class Missile {
         parts = moved;
 
         pushEntities(next);
+        effects(next);
 
         if (++steps >= settings.maxSteps()) return Result.STOPPED;
         return Result.FLYING;
@@ -157,6 +192,26 @@ public final class Missile {
             Location to = p.getLocation().add(0, 0, dir);
             p.teleport(to);
         }
+    }
+
+    /** Partikelspur am Heck + leises Antriebsgeräusch; merkt sich Front/Mitte für die Warnung. */
+    private void effects(Set<Pos> positions) {
+        int rear = dir > 0 ? Integer.MAX_VALUE : Integer.MIN_VALUE;
+        int front = dir > 0 ? Integer.MIN_VALUE : Integer.MAX_VALUE;
+        double sx = 0, sy = 0;
+        for (Pos p : positions) {
+            rear = dir > 0 ? Math.min(rear, p.z()) : Math.max(rear, p.z());
+            front = dir > 0 ? Math.max(front, p.z()) : Math.min(front, p.z());
+            sx += p.x();
+            sy += p.y();
+        }
+        frontZ = front;
+        centerX = sx / positions.size() + 0.5;
+        centerY = sy / positions.size() + 0.5;
+        Location tail = new Location(world, centerX, centerY, rear + 0.5 - dir * 0.8);
+        world.spawnParticle(Particle.FLAME, tail, 4, 0.2, 0.2, 0.1, 0.01);
+        world.spawnParticle(Particle.CLOUD, tail, 2, 0.2, 0.2, 0.1, 0.01);
+        if (steps % 3 == 0) world.playSound(tail, Sound.BLOCK_PISTON_EXTEND, 0.35f, 1.6f);
     }
 
     private void detonate(Map<Pos, BlockData> current) {

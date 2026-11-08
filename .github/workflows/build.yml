@@ -42,4 +42,5 @@ jobs:
           body: |
             Missile Wars für **Paper 26.3** (Java 21+).
             JAR in `plugins/` legen, Server starten, ingame `/mw join` – die Standard-Arena wird automatisch generiert.
+            Neu in ${{ steps.v.outputs.version }}: Stats & Bestenliste, MVP-Auswertung, Team-Menü, Join-Schilder, Teamchat, Raketen-Warnung, Sudden Death + BossBar, Raketen-Effekte, Auto-Balance.
             Eigene Maps: `/mw map create <name> arena` bzw. `/mw map import <name> <welt>` (siehe README).

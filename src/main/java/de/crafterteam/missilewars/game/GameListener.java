@@ -24,6 +24,11 @@ import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.TNTPrimeEvent;
+import org.bukkit.event.block.SignChangeEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
+import io.papermc.paper.event.player.AsyncChatEvent;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
@@ -91,7 +96,17 @@ public final class GameListener implements Listener {
         if (e.getAction() != Action.RIGHT_CLICK_BLOCK && e.getAction() != Action.RIGHT_CLICK_AIR) return;
 
         Game g = gameOf(p);
-        if (g == null || g.state() != Game.State.RUNNING || g.team(p) == null) return;
+        if (g == null) return;
+        if (GameItems.MENU_TEAM.equals(id)) {
+            if (g.team(p) != null) p.openInventory(new TeamMenu(g, p).getInventory());
+            return;
+        }
+        if (GameItems.MENU_LEAVE.equals(id)) {
+            g.leave(p, true);
+            Msg.send(p, "Du hast die Runde verlassen.");
+            return;
+        }
+        if (g.state() != Game.State.RUNNING || g.team(p) == null) return;
         Team team = g.team(p);
 
         boolean used = false;
@@ -130,6 +145,112 @@ public final class GameListener implements Listener {
                 p.getInventory().setItemInMainHand(hand.getAmount() <= 0 ? null : hand);
             }
         }
+    }
+
+    // ── Team-Menü ────────────────────────────────────────────────────
+
+    @EventHandler
+    public void onMenuClick(InventoryClickEvent e) {
+        if (!(e.getView().getTopInventory().getHolder() instanceof TeamMenu)) return;
+        e.setCancelled(true);
+        if (!(e.getWhoClicked() instanceof Player p)) return;
+        if (e.getClickedInventory() != e.getView().getTopInventory()) return;
+        Game g = gameOf(p);
+        if (g == null) {
+            p.closeInventory();
+            return;
+        }
+        Team target = switch (e.getSlot()) {
+            case TeamMenu.SLOT_GREEN -> Team.GREEN;
+            case TeamMenu.SLOT_RED -> Team.RED;
+            case TeamMenu.SLOT_RANDOM -> {
+                int gr = g.teamPlayers(Team.GREEN).size(), rd = g.teamPlayers(Team.RED).size();
+                Team cur = g.team(p);
+                // wechseln nur, wenn es das andere Team nicht überfüllt
+                yield cur != null && g.teamPlayers(cur.other()).size() < g.teamPlayers(cur).size() ? cur.other()
+                        : (gr == rd ? (Math.random() < 0.5 ? Team.GREEN : Team.RED) : (gr < rd ? Team.GREEN : Team.RED));
+            }
+            default -> null;
+        };
+        if (target == null) return;
+        p.closeInventory();
+        if (target != g.team(p)) g.changeTeam(p, target);
+    }
+
+    @EventHandler
+    public void onMenuDrag(InventoryDragEvent e) {
+        if (e.getView().getTopInventory().getHolder() instanceof TeamMenu) e.setCancelled(true);
+    }
+
+    // ── Join-Schilder ────────────────────────────────────────────────
+
+    @EventHandler(ignoreCancelled = true)
+    public void onSignCreate(SignChangeEvent e) {
+        String l0 = PlainTextComponentSerializer.plainText().serialize(
+                e.line(0) == null ? net.kyori.adventure.text.Component.empty() : e.line(0)).trim();
+        if (!l0.equalsIgnoreCase("[MissileWars]") && !l0.equalsIgnoreCase("[mw]")) return;
+        Player p = e.getPlayer();
+        if (!p.hasPermission("missilewars.admin")) {
+            e.setCancelled(true);
+            Msg.send(p, "<red>Keine Berechtigung für Join-Schilder.");
+            return;
+        }
+        String map = PlainTextComponentSerializer.plainText().serialize(
+                e.line(1) == null ? net.kyori.adventure.text.Component.empty() : e.line(1)).trim().toLowerCase();
+        if (map.isEmpty()) map = plugin.getConfig().getString("default-map", "standard");
+        if (plugin.maps().get(map) == null) {
+            Msg.send(p, "<red>Map '" + Msg.esc(map) + "' gibt es nicht. <gray>Zeile 2 = Mapname");
+            return;
+        }
+        plugin.signs().add(e.getBlock(), map);
+        Msg.send(p, "<green>Join-Schild für '" + map + "' erstellt.");
+        Bukkit.getScheduler().runTask(plugin, plugin.signs()::updateAll);
+    }
+
+    @EventHandler(priority = EventPriority.LOW)
+    public void onSignClick(PlayerInteractEvent e) {
+        if (e.getAction() != Action.RIGHT_CLICK_BLOCK || e.getClickedBlock() == null) return;
+        if (e.getHand() != EquipmentSlot.HAND) return;
+        String map = plugin.signs().mapAt(e.getClickedBlock());
+        if (map == null) return;
+        e.setCancelled(true);
+        e.getPlayer().performCommand("mw join " + map);
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onSignBreak(BlockBreakEvent e) {
+        if (plugin.signs().mapAt(e.getBlock()) == null) return;
+        if (!e.getPlayer().hasPermission("missilewars.admin") || !e.getPlayer().isSneaking()) {
+            e.setCancelled(true);
+            Msg.send(e.getPlayer(), "<gray>Zum Entfernen: als Admin <yellow>schleichen</yellow> + abbauen.");
+            return;
+        }
+        plugin.signs().remove(e.getBlock());
+        Msg.send(e.getPlayer(), "<green>Join-Schild entfernt.");
+    }
+
+    // ── Teamchat ─────────────────────────────────────────────────────
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onChat(AsyncChatEvent e) {
+        Player p = e.getPlayer();
+        Game g = gameOf(p);
+        if (g == null || !plugin.getConfig().getBoolean("team-chat", true)) return;
+        Team t = g.team(p);
+        String raw = PlainTextComponentSerializer.plainText().serialize(e.message());
+        boolean all = t == null || raw.startsWith("@") || g.state() != Game.State.RUNNING;
+        if (raw.startsWith("@")) e.message(net.kyori.adventure.text.Component.text(raw.substring(1).trim()));
+
+        List<Player> receivers = all ? g.everyone() : g.teamPlayers(t);
+        e.viewers().removeIf(a -> a instanceof Player);
+        e.viewers().addAll(receivers);
+
+        String prefix;
+        if (t == null) prefix = "<gray>[Zuschauer] ";
+        else if (all) prefix = "<" + t.tag() + ">[" + t.displayName() + "] ";
+        else prefix = "<" + t.tag() + ">[Team] ";
+        String namePart = prefix + "<white>" + Msg.esc(p.getName()) + "<dark_gray> » <gray>";
+        e.renderer((source, displayName, message, viewer) -> Msg.mm(namePart).append(message));
     }
 
     @EventHandler

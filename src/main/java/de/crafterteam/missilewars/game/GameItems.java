@@ -25,6 +25,8 @@ public final class GameItems {
     public static final String SHIELD = "shield";
     public static final String FIREBALL = "fireball";
     public static final String ARROWS = "arrows";
+    public static final String MENU_TEAM = "menu_team";
+    public static final String MENU_LEAVE = "menu_leave";
 
     public static final List<String> ALL_IDS = List.of(
             "tomahawk", "juggernaut", "shieldbuster", "lightning", "guardian", SHIELD, FIREBALL, ARROWS);
@@ -53,6 +55,10 @@ public final class GameItems {
             case FIREBALL -> tagged(new ItemStack(Material.FIRE_CHARGE), id, "<red><bold>Feuerball",
                     "<gray>Rechtsklick zum Abfeuern.", "<gray>Kann zurückgeschlagen werden!");
             case ARROWS -> new ItemStack(Material.ARROW, plugin.getConfig().getInt("items.arrows.amount", 3));
+            case MENU_TEAM -> tagged(new ItemStack(Material.WHITE_WOOL), id, "<yellow><bold>Team wählen",
+                    "<gray>Rechtsklick");
+            case MENU_LEAVE -> tagged(new ItemStack(Material.RED_BED), id, "<red><bold>Verlassen",
+                    "<gray>Rechtsklick");
             default -> null;
         };
     }
@@ -106,6 +112,15 @@ public final class GameItems {
             if (r < 0) return ids.get(i);
         }
         return ids.getLast();
+    }
+
+    /** Items in der Wartephase. */
+    public void giveLobbyItems(Player p, Team team) {
+        p.getInventory().clear();
+        Material wool = team == Team.GREEN ? Material.LIME_WOOL : Material.RED_WOOL;
+        p.getInventory().setItem(0, tagged(new ItemStack(wool), MENU_TEAM, "<yellow><bold>Team wählen",
+                "<gray>Rechtsklick"));
+        p.getInventory().setItem(8, create(MENU_LEAVE));
     }
 
     public void giveKit(Player p, Team team) {
