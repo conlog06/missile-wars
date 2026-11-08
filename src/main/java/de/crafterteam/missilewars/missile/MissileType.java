@@ -28,7 +28,17 @@ public enum MissileType {
     GEMINI("gemini", "Gemini", Material.ALLAY_SPAWN_EGG, false, -1, true,
             "Zwillingsrakete – trifft breit."),
     INTERCEPTOR("interceptor", "Abfangjäger", Material.PHANTOM_SPAWN_EGG, false, 3, false,
-            "Zündet sofort beim Aufprall – holt Raketen vom Himmel.");
+            "Zündet sofort beim Aufprall – holt Raketen vom Himmel."),
+    HYDRA("hydra", "Hydra", Material.BLAZE_SPAWN_EGG, false, -1, false,
+            "Drei Sprengköpfe nebeneinander – 5 Blöcke breit."),
+    DRILL("drill", "Bohrer", Material.SILVERFISH_SPAWN_EGG, false, -1, false,
+            "Bohrt sich durch Blöcke (nicht Obsidian) und zündet dann."),
+    ARROW("arrow", "Pfeil", Material.STRAY_SPAWN_EGG, false, -1, false,
+            "Die schnellste Rakete. Winzig, schwer zu treffen."),
+    CARRIER("carrier", "Transporter", Material.TURTLE_SPAWN_EGG, false, -1, true,
+            "Kein Sprengstoff – große Plattform zum Rüberfahren."),
+    CLUSTER("cluster", "Streubombe", Material.SPIDER_SPAWN_EGG, false, -1, false,
+            "Verteilt beim Einschlag zusätzliche TNT in der Umgebung.");
 
     /** Platzhalter für die Teamfarbe (Flossen). */
     public static final Material TEAM_ACCENT = Material.WHITE_TERRACOTTA;
@@ -70,6 +80,37 @@ public enum MissileType {
     /** Kann man oben drauf mitfahren? */
     public boolean rideable() { return rideable; }
     public List<Part> parts() { return parts; }
+
+    /** Bohrt sich durch weiche Blöcke. */
+    public boolean drills() { return this == DRILL; }
+
+    /** Streut beim Einschlag zusätzliche TNT. */
+    public boolean cluster() { return this == CLUSTER; }
+
+    /** Abmessung "Breite×Höhe×Länge". */
+    public String size() {
+        int minX = 99, maxX = -99, maxY = 0, maxZ = 0;
+        for (Part p : parts) {
+            minX = Math.min(minX, p.x()); maxX = Math.max(maxX, p.x());
+            maxY = Math.max(maxY, p.y()); maxZ = Math.max(maxZ, p.z());
+        }
+        return (maxX - minX + 1) + "×" + (maxY + 1) + "×" + (maxZ + 1);
+    }
+
+    /** Kurzbeschreibung der Besonderheit (für Übersicht). */
+    public String special() {
+        return switch (this) {
+            case SHIELDBUSTER -> "Durchbricht Glas";
+            case INTERCEPTOR -> "Zündet sofort";
+            case DRILL -> "Bohrt durch Blöcke";
+            case CLUSTER -> "Streut TNT";
+            case CARRIER -> "Nur Transport";
+            case HYDRA -> "Sehr breit";
+            case ARROW -> "Höchstes Tempo";
+            case GUARDIAN, GEMINI, JUGGERNAUT -> "Mitfahren";
+            default -> "–";
+        };
+    }
 
     public long tntCount() {
         return parts.stream().filter(Part::isTnt).count();
@@ -176,6 +217,57 @@ public enum MissileType {
                 p.add(b(0, 0, 2, S));
                 p.add(b(0, 0, 3, T));
                 p.add(b(0, 1, 1, A));
+            }
+            case "hydra" -> {
+                // drei Mini-Raketen bei x = -2, 0, 2, verbunden durch Schleim
+                for (int x : new int[]{-2, 0, 2}) {
+                    p.add(f(x, 0, 0, Material.OBSERVER, BlockFace.NORTH));
+                    p.add(f(x, 0, 1, Material.STICKY_PISTON, BlockFace.SOUTH));
+                    p.add(b(x, 0, 2, S));
+                    p.add(b(x, 0, 3, T));
+                    p.add(b(x, 0, 4, T));
+                    p.add(b(x, 1, 0, A));
+                }
+                p.add(b(-1, 0, 2, S));
+                p.add(b(1, 0, 2, S));
+            }
+            case "drill" -> {
+                engine(p, 0, 0, 0);
+                p.add(b(0, 0, 4, R));
+                p.add(b(0, 0, 5, T));
+                p.add(b(0, 0, 6, T));
+                p.add(b(0, 1, 0, A));
+                p.add(b(0, 1, 1, S));
+                p.add(b(0, 1, 3, S));
+                p.add(b(0, 1, 4, T));
+                p.add(b(0, 1, 5, Material.IRON_BLOCK));   // Bohrkopf
+                p.add(b(0, 1, 6, Material.IRON_BLOCK));
+            }
+            case "arrow" -> {
+                p.add(f(0, 0, 0, Material.OBSERVER, BlockFace.NORTH));
+                p.add(f(0, 0, 1, Material.PISTON, BlockFace.SOUTH));
+                p.add(b(0, 0, 2, S));
+                p.add(b(0, 0, 3, T));
+                p.add(b(0, 0, 4, T));
+            }
+            case "carrier" -> {
+                // breite Plattform, kein TNT
+                engine(p, 0, 0, 0);
+                for (int x : new int[]{-1, 1}) {
+                    for (int z = 0; z <= 5; z++) p.add(b(x, 0, z, S));
+                }
+                p.add(b(0, 0, 4, S));
+                p.add(b(0, 0, 5, S));
+                for (int x = -2; x <= 2; x++) {
+                    for (int z = 0; z <= 5; z++) p.add(b(x, 1, z, Math.abs(x) == 2 ? A : H));
+                }
+            }
+            case "cluster" -> {
+                engine(p, 0, 0, 0);
+                p.add(b(0, 0, 4, R));
+                p.add(b(0, 0, 5, T));
+                p.add(b(0, 1, 0, A));
+                for (int z = 2; z <= 5; z++) p.add(b(0, 1, z, T));
             }
             default -> throw new IllegalStateException(id);
         }

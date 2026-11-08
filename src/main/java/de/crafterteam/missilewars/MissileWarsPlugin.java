@@ -34,6 +34,11 @@ public final class MissileWarsPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        // Migration alter Configs (vor 2.1): Item-Intervall auf 20 s
+        if (!getConfig().isSet("config-version")) {
+            getConfig().set("item-interval", 20);
+            getLogger().info("Config migriert: item-interval = 20 s, Einzelspiel-Modus aktiv.");
+        }
         getConfig().options().copyDefaults(true);   // neue Optionen in alte config.yml übernehmen
         saveConfig();
         maps = new MapManager(this);

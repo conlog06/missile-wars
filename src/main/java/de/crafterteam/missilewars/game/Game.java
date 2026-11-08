@@ -31,6 +31,7 @@ import org.bukkit.entity.Display;
 import org.bukkit.entity.Firework;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.util.Transformation;
+import org.bukkit.util.Vector;
 import org.joml.AxisAngle4f;
 import org.joml.Vector3f;
 import org.bukkit.entity.Player;
@@ -283,6 +284,9 @@ public final class Game {
             p.setGameMode(GameMode.SURVIVAL);
             plugin.items().giveKit(p, t);
             applyCombat(p);
+            giveCompass(p, t);
+            kit(p).apply(p);
+            touch(p);
             giveItem(p);
             p.showBossBar(bossBar);
             plugin.stats().add(p, Stat.GAMES, 1);
@@ -303,6 +307,8 @@ public final class Game {
     public void spectate(Player p) {
         snapshots.putIfAbsent(p.getUniqueId(), PlayerSnapshot.capture(p));
         teams.remove(p.getUniqueId());
+        ready.remove(p.getUniqueId());
+        respawning.remove(p.getUniqueId());
         spectators.add(p.getUniqueId());
         plugin.games().bind(p, this);
         PlayerSnapshot.reset(p);
@@ -347,6 +353,8 @@ public final class Game {
         UUID id = p.getUniqueId();
         Team t = teams.remove(id);
         spectators.remove(id);
+        ready.remove(id);
+        respawning.remove(id);
         plugin.games().unbind(p);
         plugin.preview().hide(p);
         p.hideBossBar(bossBar);
@@ -446,7 +454,7 @@ public final class Game {
     }
 
     private void giveLobbyItems(Player p, Team t) {
-        plugin.items().giveLobbyItems(p, t, votingOpen() && votableMaps().size() > 1);
+        plugin.items().giveLobbyItems(p, t, votingOpen() && votableMaps().size() > 1, ready.contains(p.getUniqueId()));
     }
 
     private void resolveVote() {
@@ -469,7 +477,7 @@ public final class Game {
         if (target == null || plugin.games().get(best) != null) return;
         broadcast("<pri>Abstimmung: <txt>" + best + " <mut>gewinnt mit " + bestVotes + " Stimmen – Arena wird gewechselt …");
         try {
-            Game ng = plugin.games().getOrCreate(target);
+            Game ng = plugin.games().getOrCreate(target, true);
             transferTo(ng);
         } catch (GameException e) {
             broadcast("<bad>Map-Wechsel fehlgeschlagen: " + Msg.esc(e.getMessage()));
@@ -494,6 +502,7 @@ public final class Game {
         teams.clear();
         spectators.clear();
         transferring = true;
+        ng.kits.putAll(kits);
         ng.votingDone = true;
         ng.state = State.COUNTDOWN;
         ng.countdown = Math.max(countdown, 5);
@@ -543,6 +552,7 @@ public final class Game {
     private void everySecond() {
         switch (state) {
             case COUNTDOWN -> {
+                checkReady();
                 if (teams.size() < min() && countdown > 5) {
                     state = State.WAITING;
                     broadcast("<bad>Zu wenige Spieler – Countdown abgebrochen.");
@@ -580,8 +590,12 @@ public final class Game {
                 }
                 if (--itemTimer <= 0) {
                     itemTimer = interval();
-                    for (Player p : players()) giveItem(p);
+                    for (Player p : players()) if (!respawning.contains(p.getUniqueId())) giveItem(p);
                 }
+                checkAfk();
+                if (state != State.RUNNING) return;
+                checkTimeLimit();
+                if (state != State.RUNNING) return;
                 updateBossBar();
             }
             default -> {
@@ -658,6 +672,10 @@ public final class Game {
             p.teleport(map.spawn(t).toLocation(world));
             plugin.items().giveKit(p, t);
             applyCombat(p);
+            giveCompass(p, t);
+            kit(p).apply(p);
+            touch(p);
+            if (kit(p).startItem() != null) p.getInventory().addItem(plugin.items().create(kit(p).startItem()));
             for (int i = 0; i < startItems; i++) giveItem(p);
             p.showTitle(Title.title(Msg.mm("<ok><bold>Los!"),
                     Msg.mm("<mut>Zerstöre das Portal von Team " + t.other().colored()),
@@ -668,7 +686,7 @@ public final class Game {
     }
 
     private void giveItem(Player p) {
-        String id = plugin.items().roll(p);
+        String id = plugin.items().roll(p, kit(p));
         if (id == null) return;
         ItemStack it = plugin.items().create(id);
         if (it == null) return;
@@ -704,6 +722,7 @@ public final class Game {
         // Void
         if (tickCounter % 5 == 0) {
             for (Player p : players()) {
+                if (respawning.contains(p.getUniqueId())) continue;
                 if (p.getLocation().getY() < map.deathY()) {
                     if (state == State.RUNNING) die(p, "ist ins Void gefallen", true);
                     else if (p.getWorld().equals(world)) p.teleport(waitSpot(team(p)));
@@ -928,14 +947,166 @@ public final class Game {
             broadcast(name + " <mut>" + reason + ".");
         }
 
+        // Kill-Effekt am Todesort
+        Location at = p.getLocation().add(0, 1, 0);
+        world.spawnParticle(org.bukkit.Particle.DUST, at, 40, 0.4, 0.6, 0.4, 0,
+                new org.bukkit.Particle.DustOptions(t.armorColor(), 1.6f));
+        world.spawnParticle(org.bukkit.Particle.LARGE_SMOKE, at, 10, 0.3, 0.4, 0.3, 0.02);
+        world.playSound(at, Sound.ENTITY_PLAYER_DEATH, 0.8f, 1f);
+
         p.setFireTicks(0);
         p.setFallDistance(0f);
         p.setVelocity(new org.bukkit.util.Vector());
         p.setHealth(PlayerSnapshot.maxHealth(p));
         p.setFoodLevel(20);
+        int delay = plugin.getConfig().getInt("respawn-delay", 3);
+        if (delay <= 0) {
+            respawn(p);
+            return;
+        }
+        // kurze Zuschauerphase mit Countdown
+        respawning.add(p.getUniqueId());
+        p.setGameMode(GameMode.SPECTATOR);
+        p.teleport(map.spawn(t).toLocation(world).add(0, 6, 0));
+        for (int i = 0; i < delay; i++) {
+            final int left = delay - i;
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (!respawning.contains(p.getUniqueId()) || !p.isOnline()) return;
+                p.showTitle(Title.title(Msg.mm("<bad><bold>Gestorben"), Msg.mm("<mut>Respawn in <acc>" + left),
+                        Title.Times.times(Duration.ZERO, Duration.ofMillis(1100), Duration.ZERO)));
+            }, 20L * i);
+        }
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!respawning.remove(p.getUniqueId()) || !p.isOnline() || team(p) == null || state != State.RUNNING) return;
+            respawn(p);
+        }, 20L * delay);
+    }
+
+    private void respawn(Player p) {
+        Team t = team(p);
+        if (t == null) return;
+        p.setGameMode(GameMode.SURVIVAL);
+        p.setFallDistance(0f);
+        p.setFireTicks(0);
+        p.setHealth(PlayerSnapshot.maxHealth(p));
         p.teleport(map.spawn(t).toLocation(world));
         p.setNoDamageTicks(40);
+        kit(p).apply(p);
         p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_HURT, 1f, 0.8f);
+    }
+
+    public boolean isRespawning(Player p) {
+        return respawning.contains(p.getUniqueId());
+    }
+
+    // ── Kits, Bereit, AFK ────────────────────────────────────────────
+
+    public Kit kit(Player p) {
+        return kits.getOrDefault(p.getUniqueId(), Kit.STANDARD);
+    }
+
+    public void setKit(Player p, Kit k) {
+        if (state == State.RUNNING || state == State.ENDING) {
+            Msg.send(p, "<bad>Kits wählt man vor dem Start.");
+            return;
+        }
+        kits.put(p.getUniqueId(), k);
+        Msg.send(p, "Kit <acc>" + k.displayName() + " <mut>ausgewählt.");
+        p.playSound(p.getLocation(), Sound.ITEM_ARMOR_EQUIP_GENERIC, 1f, 1.2f);
+    }
+
+    public void toggleReady(Player p) {
+        if (state != State.WAITING && state != State.COUNTDOWN) return;
+        Team t = team(p);
+        if (t == null) return;
+        if (!ready.remove(p.getUniqueId())) {
+            ready.add(p.getUniqueId());
+            broadcast("<txt>" + Msg.esc(p.getName()) + " <ok>ist bereit <dim>(" + readyCount() + "/" + teams.size() + ")");
+        } else {
+            broadcast("<txt>" + Msg.esc(p.getName()) + " <mut>ist nicht mehr bereit.");
+        }
+        giveLobbyItems(p, t);
+        checkReady();
+        updateBoard();
+    }
+
+    private int readyCount() {
+        int n = 0;
+        for (UUID id : teams.keySet()) if (ready.contains(id)) n++;
+        return n;
+    }
+
+    /** Alle bereit (und genug Spieler) → Countdown auf 5 s verkürzen. */
+    private void checkReady() {
+        if (teams.size() < min() || readyCount() < teams.size()) return;
+        if (state == State.WAITING) state = State.COUNTDOWN;
+        if (countdown > 5 || countdown <= 0) {
+            countdown = 5;
+            broadcast("<ok>Alle sind bereit – es geht gleich los!");
+        }
+    }
+
+    public void touch(Player p) {
+        lastActive.put(p.getUniqueId(), System.currentTimeMillis());
+    }
+
+    private void checkAfk() {
+        int limit = plugin.getConfig().getInt("afk-seconds", 90);
+        if (limit <= 0) return;
+        long now = System.currentTimeMillis();
+        for (Player p : players()) {
+            Long last = lastActive.get(p.getUniqueId());
+            if (last == null) {
+                touch(p);
+                continue;
+            }
+            if (now - last > limit * 1000L && !respawning.contains(p.getUniqueId())) {
+                broadcast("<txt>" + Msg.esc(p.getName()) + " <mut>war zu lange AFK und schaut jetzt zu.");
+                Msg.send(p, "<acc>Du warst AFK. <mut>/mw leave zum Verlassen oder warte auf die nächste Runde.");
+                Team t = team(p);
+                spectate(p);
+                if (t != null && state == State.RUNNING && teamPlayers(t).isEmpty()) {
+                    end(t.other(), "Team " + t.colored() + " <mut>hat keine aktiven Spieler mehr.");
+                    return;
+                }
+            }
+        }
+    }
+
+    /** Zeitlimit: Team mit intakterem Portal gewinnt, dann mehr Kills, sonst Zufall. */
+    private void checkTimeLimit() {
+        int limit = plugin.getConfig().getInt("time-limit-minutes", 15);
+        if (limit <= 0) return;
+        int left = limit * 60 - seconds;
+        if (left == 60 || left == 30 || left == 10) broadcast("<acc>Noch " + left + " Sekunden bis zum Zeitlimit!");
+        if (left > 0) return;
+        double g = portalLeft(Team.GREEN) / (double) portalBlocks.get(Team.GREEN).size();
+        double r = portalLeft(Team.RED) / (double) portalBlocks.get(Team.RED).size();
+        Team winner;
+        String why;
+        if (Math.abs(g - r) > 1e-9) {
+            winner = g > r ? Team.GREEN : Team.RED;
+            why = "intakteres Portal";
+        } else {
+            int kg = 0, kr = 0;
+            for (Map.Entry<UUID, int[]> e : round.entrySet()) {
+                Team t = teams.get(e.getKey());
+                if (t == Team.GREEN) kg += e.getValue()[0];
+                else if (t == Team.RED) kr += e.getValue()[0];
+            }
+            winner = kg == kr ? (Math.random() < 0.5 ? Team.GREEN : Team.RED) : (kg > kr ? Team.GREEN : Team.RED);
+            why = kg == kr ? "Münzwurf" : "mehr Kills";
+        }
+        end(winner, "<acc>Zeitlimit erreicht! <mut>Entscheidung: " + why + ".");
+    }
+
+    /** Kompass zeigt auf das gegnerische Portal. */
+    private void giveCompass(Player p, Team t) {
+        if (!plugin.getConfig().getBoolean("team-compass", true)) return;
+        MapConfig.Box b = map.portal(t.other());
+        p.setCompassTarget(new Location(world, b.centerX(), b.centerY(), b.centerZ()));
+        p.getInventory().setItem(7, de.crafterteam.missilewars.gui.Gui.item(Material.COMPASS,
+                "<bad><bold>Gegner-Portal", "<mut>Zeigt zum Portal von Team " + t.other().colored()));
     }
 
     // ── Items benutzen ───────────────────────────────────────────────
@@ -1039,6 +1210,37 @@ public final class Game {
         return true;
     }
 
+    /** Rettungsplattform: 5x5 Schleim unter dem Spieler, verschwindet nach 8 s. */
+    public boolean deployPlatform(Player p, Team team) {
+        if (state != State.RUNNING) return false;
+        Block center = p.getLocation().getBlock().getRelative(0, -2, 0);
+        List<Block> placed = new ArrayList<>();
+        for (int dx = -2; dx <= 2; dx++) {
+            for (int dz = -2; dz <= 2; dz++) {
+                if (Math.abs(dx) == 2 && Math.abs(dz) == 2) continue;
+                Block b = center.getRelative(dx, 0, dz);
+                if (b.getType().isAir()) {
+                    b.setType(Math.abs(dx) == 2 || Math.abs(dz) == 2 ? team.glass() : Material.SLIME_BLOCK, false);
+                    placed.add(b);
+                }
+            }
+        }
+        if (placed.isEmpty()) {
+            Msg.send(p, "<bad>Unter dir ist kein Platz.");
+            return false;
+        }
+        p.setFallDistance(0f);
+        Vector v = p.getVelocity();
+        if (v.getY() < 0) p.setVelocity(v.setY(0));
+        world.playSound(p.getLocation(), Sound.BLOCK_SLIME_BLOCK_PLACE, 1f, 0.8f);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            for (Block b : placed) {
+                if (b.getType() == Material.SLIME_BLOCK || b.getType() == team.glass()) b.setType(Material.AIR, false);
+            }
+        }, 160L);
+        return true;
+    }
+
     /** Glasschild senkrecht zur Flugachse aufklappen. */
     public void deployShield(Location center, Team team) {
         if (state != State.RUNNING) return;
@@ -1134,6 +1336,10 @@ public final class Game {
     private boolean shutDown;
     private boolean transferring;
     private boolean firstBlood;
+    private final Map<UUID, Kit> kits = new HashMap<>();
+    private final Set<UUID> ready = new HashSet<>();
+    private final Set<UUID> respawning = new HashSet<>();
+    private final Map<UUID, Long> lastActive = new HashMap<>();
     private final Map<UUID, Integer> streaks = new HashMap<>();
 
     /** Alle raus, Welt löschen. */
@@ -1200,6 +1406,9 @@ public final class Game {
             case COUNTDOWN -> lines.add("<mut>Start in <acc>" + Math.max(0, countdown) + "s");
             case RUNNING -> lines.add("<mut>Zeit: <txt>" + formatTime(seconds));
             case ENDING -> lines.add("<pri>Runde beendet");
+        }
+        if ((state == State.WAITING || state == State.COUNTDOWN) && !teams.isEmpty()) {
+            lines.add("<mut>Bereit: <ok>" + readyCount() + "<dim>/" + teams.size());
         }
         if (votingOpen() && !votes.isEmpty()) {
             String lead = map.name();

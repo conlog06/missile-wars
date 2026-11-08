@@ -22,6 +22,36 @@ Alte Clients (1.8 / 1.12) kommen per **ViaVersion + ViaBackwards** auf den Serve
 
 Die Raketen werden vom Plugin bewegt (wie Flugmaschinen, aber ohne echtes Redstone) – das läuft stabil, ohne Lag und unabhängig von Redstone-Änderungen in neuen Versionen.
 
+## Neu in 2.1.0
+
+**Nur noch eine Runde** – Spieler kommen beim Betreten des Servers automatisch rein, `/mw join` ist nicht mehr nötig. Die Map wird in der Wartelobby per Abstimmung gewählt (Startwert: zufällige Map). Nach der Runde geht's automatisch in die nächste. (`single-game` in der Config)
+
+**Items alle 20 Sekunden** (alte Configs werden automatisch umgestellt).
+
+**5 neue Raketen** – jetzt 12:
+
+| Rakete | Größe | TNT | Besonderheit |
+|---|---|---|---|
+| Hydra | 5×2×5 | 6 | drei Sprengköpfe nebeneinander |
+| Bohrer | 1×2×7 | 3 | bohrt sich durch Blöcke (nicht Obsidian) |
+| Pfeil | 1×1×5 | 2 | schnellste Rakete |
+| Transporter | 5×2×6 | 0 | große Plattform nur zum Rüberfahren |
+| Streubombe | 1×2×6 | 5 | verteilt 6 zusätzliche TNT |
+
+**Raketen-Übersicht** – Buch in der Wartelobby (oder `/mw raketen`): alle Raketen mit Tempo, Ladung, Größe, Mitfahren, Besonderheit und Drop-Chance (passend zu deinem Kit) plus alle Hilfsmittel.
+
+**10 neue Features**
+1. **Kits** – Standard, Angreifer, Verteidiger, Techniker, Sprinter (ändern Item-Chancen, Boni)
+2. **Rettungsplattform** – Lohenrute: Schleim-Plattform unter dir für 8 s
+3. **Enderperle** im Item-Pool
+4. **Respawn-Countdown** – 3 s Zuschauer nach dem Tod
+5. **Zeitlimit** (15 min) – Entscheidung nach Portal-Zustand, dann Kills
+6. **AFK-Erkennung** – nach 90 s Inaktivität zum Zuschauer
+7. **Bereit-System** – sind alle bereit, startet es in 5 s
+8. **Doppelsprung** in der Wartelobby
+9. **Kill-Effekte** – Partikel in Teamfarbe + Sound
+10. **Teamkompass** – zeigt auf das gegnerische Portal
+
 ## Neu in 2.0.0
 
 **Wartelobby** – eine generierte, schwebende Lobby-Insel (Denkmal-Rakete, Teamsäulen, Leuchtboden, Hologramm). Spieler warten dort bis zum Start, danach geht's in die Arena. Eigene Lobby: `/mw setwaitlobby`.
@@ -114,6 +144,8 @@ In `spigot.yml` `settings.bungeecord: true` (bzw. Velocity-Forwarding in `paper-
 | `/mw leave` | Verlassen – Inventar & Position werden wiederhergestellt |
 | `/mw list` | Maps & laufende Runden |
 | `/mw menu` | Spielmenü |
+| `/mw raketen` | Raketen-Übersicht |
+| `/mw kit` / `/mw bereit` | Kit wählen / bereit melden |
 | `/mw teleporter` | (Zuschauer) Spieler-Teleporter |
 | `/mw stats [spieler]` | Statistiken |
 | `/mw top [stat]` | Bestenliste |

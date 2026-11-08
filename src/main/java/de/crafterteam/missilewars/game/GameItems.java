@@ -33,15 +33,21 @@ public final class GameItems {
 
     public static final String WIND_CHARGE = "windcharge";
     public static final String MACE = "mace";
+    public static final String PLATFORM = "platform";
+    public static final String ENDER_PEARL = "enderpearl";
+    public static final String MENU_KIT = "menu_kit";
+    public static final String MENU_MISSILES = "menu_missiles";
+    public static final String MENU_READY = "menu_ready";
 
     public static final List<String> ALL_IDS = List.of(
             "tomahawk", "juggernaut", "shieldbuster", "lightning", "guardian", "gemini", "interceptor",
-            SHIELD, FIREBALL, ARROWS,
+            "hydra", "drill", "arrow", "carrier", "cluster",
+            SHIELD, FIREBALL, ARROWS, PLATFORM, ENDER_PEARL,
             WIND_CHARGE, MACE);
 
     /** Vanilla-Items ohne Tag – werden über das Material gezählt und funktionieren normal. */
     private static final Map<String, Material> VANILLA = Map.of(
-            ARROWS, Material.ARROW, WIND_CHARGE, Material.WIND_CHARGE, MACE, Material.MACE);
+            ARROWS, Material.ARROW, WIND_CHARGE, Material.WIND_CHARGE, MACE, Material.MACE, ENDER_PEARL, Material.ENDER_PEARL);
 
     private final MissileWarsPlugin plugin;
     private final NamespacedKey itemKey;
@@ -81,6 +87,14 @@ public final class GameItems {
             }
             case MENU_TEAM -> tagged(new ItemStack(Material.WHITE_WOOL), id, "<acc><bold>Team wählen",
                     "<mut>Rechtsklick");
+            case ENDER_PEARL -> new ItemStack(Material.ENDER_PEARL);
+            case PLATFORM -> tagged(new ItemStack(Material.BLAZE_ROD), id, "<info><bold>Rettungsplattform",
+                    "<mut>Rechtsklick: Schleim-Plattform unter dir", "<mut>– rettet dich vor dem Void (8 s).");
+            case MENU_KIT -> tagged(new ItemStack(Material.CHEST), id, "<acc><bold>Kit wählen", "<dim>Rechtsklick");
+            case MENU_MISSILES -> tagged(new ItemStack(Material.KNOWLEDGE_BOOK), id, "<pri><bold>Raketen-Übersicht",
+                    "<mut>Alle Raketen & Items im Überblick", "<dim>Rechtsklick");
+            case MENU_READY -> tagged(new ItemStack(Material.LIME_DYE), id, "<ok><bold>Bereit!",
+                    "<mut>Wenn alle bereit sind, startet die Runde sofort", "<dim>Rechtsklick");
             case MENU_GAME -> tagged(new ItemStack(Material.RECOVERY_COMPASS), id, "<pri><bold>Spielmenü",
                     "<mut>Maps, Statistiken, Bestenliste", "<dim>Rechtsklick");
             case MENU_VOTE -> tagged(new ItemStack(Material.MAP), id, "<pri><bold>Map-Abstimmung",
@@ -121,13 +135,30 @@ public final class GameItems {
 
     /** Zufälliges Item nach Gewichtung, das der Spieler noch nicht "voll" hat. Null = nichts frei. */
     public String roll(Player p) {
+        return roll(p, Kit.STANDARD);
+    }
+
+    /** Wahrscheinlichkeit (0..1) für ein Item mit Standard-Gewichten – für die Übersicht. */
+    public double chance(String id, Kit kit) {
+        ConfigurationSection sec = plugin.getConfig().getConfigurationSection("items");
+        if (sec == null) return 0;
+        double total = 0, own = 0;
+        for (String i : ALL_IDS) {
+            double w = sec.getInt(i + ".weight", 0) * kit.multiplier(i);
+            total += w;
+            if (i.equals(id)) own = w;
+        }
+        return total <= 0 ? 0 : own / total;
+    }
+
+    public String roll(Player p, Kit kit) {
         ConfigurationSection sec = plugin.getConfig().getConfigurationSection("items");
         if (sec == null) return null;
         List<String> ids = new ArrayList<>();
         List<Integer> weights = new ArrayList<>();
         int total = 0;
         for (String id : ALL_IDS) {
-            int w = sec.getInt(id + ".weight", 0);
+            int w = (int) Math.round(sec.getInt(id + ".weight", 0) * 10 * (kit == null ? 1.0 : kit.multiplier(id)));
             int max = sec.getInt(id + ".max", 1);
             if (w <= 0 || count(p, id) >= max) continue;
             ids.add(id);
@@ -145,7 +176,17 @@ public final class GameItems {
 
     /** Items in der Wartephase. */
     public void giveLobbyItems(Player p, Team team, boolean vote) {
+        giveLobbyItems(p, team, vote, false);
+    }
+
+    public void giveLobbyItems(Player p, Team team, boolean vote, boolean ready) {
         p.getInventory().clear();
+        if (plugin.getConfig().getBoolean("kits", true)) p.getInventory().setItem(1, create(MENU_KIT));
+        p.getInventory().setItem(3, create(MENU_MISSILES));
+        ItemStack readyItem = create(MENU_READY);
+        if (ready) readyItem = tagged(new ItemStack(Material.GRAY_DYE), MENU_READY, "<mut><bold>Nicht mehr bereit",
+                "<ok>Du bist bereit.", "<dim>Rechtsklick zum Zurücknehmen");
+        p.getInventory().setItem(6, readyItem);
         Material wool = team == Team.GREEN ? Material.LIME_WOOL : Material.RED_WOOL;
         p.getInventory().setItem(0, tagged(new ItemStack(wool), MENU_TEAM, "<acc><bold>Team wählen",
                 "<mut>Rechtsklick"));

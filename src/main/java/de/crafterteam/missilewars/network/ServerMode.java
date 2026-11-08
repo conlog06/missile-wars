@@ -41,6 +41,11 @@ public final class ServerMode implements Listener {
         return plugin.getConfig().getBoolean("server-mode.enabled", false);
     }
 
+    /** Automatisch beitreten: Spielmodus-Server oder Einzelspiel mit auto-join. */
+    public boolean autoJoin() {
+        return serverMode() || (plugin.games().singleGame() && plugin.getConfig().getBoolean("single-game.auto-join", true));
+    }
+
     public boolean bungee() {
         String s = plugin.getConfig().getString("bungee.lobby-server", "");
         return plugin.getConfig().getBoolean("bungee.enabled", false) && s != null && !s.isBlank();
@@ -63,7 +68,7 @@ public final class ServerMode implements Listener {
 
     /** Was nach dem Rundenende mit einem Spieler passiert (nur im Spielmodus). */
     public void afterGame(Player p) {
-        if (!serverMode() || !p.isOnline()) return;
+        if (!autoJoin() || !p.isOnline()) return;
         String mode = plugin.getConfig().getString("server-mode.after-game", "requeue");
         if ("lobby-server".equalsIgnoreCase(mode) && toLobbyServer(p)) return;
         // requeue: in die nächste Runde
@@ -79,11 +84,13 @@ public final class ServerMode implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onJoin(PlayerJoinEvent e) {
-        if (!serverMode()) return;
-        e.joinMessage(null);
+        if (!autoJoin()) return;
+        if (serverMode()) e.joinMessage(null);
         Player p = e.getPlayer();
-        p.setGameMode(GameMode.ADVENTURE);
-        p.getInventory().clear();
+        if (serverMode()) {   // reiner Minigame-Server: Inventar egal; sonst sichert der Snapshot alles
+            p.setGameMode(GameMode.ADVENTURE);
+            p.getInventory().clear();
+        }
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (p.isOnline() && plugin.games().get(p) == null) plugin.games().quickJoin(p, null, false);
         }, 5L);
@@ -97,7 +104,7 @@ public final class ServerMode implements Listener {
     /** MOTD mit Rundenstatus – praktisch für Server-Selector auf dem Proxy. */
     @EventHandler
     public void onPing(PaperServerListPingEvent e) {
-        if (!plugin.getConfig().getBoolean("server-mode.motd", true) || !serverMode()) return;
+        if (!plugin.getConfig().getBoolean("server-mode.motd", true) || !autoJoin()) return;
         Game g = null;
         for (Game x : plugin.games().all()) if (g == null || x.playerCount() > g.playerCount()) g = x;
         String status;

@@ -159,4 +159,69 @@ public final class Menus {
         }
         gui.open(viewer);
     }
+
+    // ── Raketen-Übersicht ────────────────────────────────────────────
+
+    public static void missiles(MissileWarsPlugin plugin, Player viewer) {
+        Gui gui = new Gui(6, "<logo> <dim>» <pri>Raketen & Items").frame();
+        de.crafterteam.missilewars.game.Game g = plugin.games().get(viewer);
+        de.crafterteam.missilewars.game.Kit kit = g == null ? de.crafterteam.missilewars.game.Kit.STANDARD : g.kit(viewer);
+        int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25};
+        int i = 0;
+        for (de.crafterteam.missilewars.missile.MissileType t : de.crafterteam.missilewars.missile.MissileType.values()) {
+            if (i >= slots.length) break;
+            int ticks = Math.max(1, plugin.getConfig().getInt("missile.speed." + t.id(), 4));
+            double chance = plugin.items().chance(t.id(), kit) * 100;
+            List<String> lore = new ArrayList<>();
+            lore.add("<mut>" + t.description());
+            lore.add("");
+            lore.add("<mut>Tempo      <txt>" + String.format(Locale.ROOT, "%.1f", 20.0 / ticks) + " Blöcke/s");
+            lore.add("<mut>Ladung     <bad>" + t.tntCount() + " TNT");
+            lore.add("<mut>Größe      <txt>" + t.size() + " <dim>(B×H×L)");
+            lore.add("<mut>Mitfahren  " + (t.rideable() ? "<ok>✔ ja" : "<dim>✘ nein"));
+            lore.add("<mut>Besonders  <acc>" + t.special());
+            lore.add("");
+            lore.add("<mut>Chance pro Item: <pri>" + String.format(Locale.ROOT, "%.1f", chance) + "%"
+                    + (kit != de.crafterteam.missilewars.game.Kit.STANDARD ? " <dim>(Kit " + kit.displayName() + ")" : ""));
+            gui.set(slots[i++], Gui.item(t.item(), "<pri><bold>" + t.displayName(), lore.toArray(String[]::new)), null);
+        }
+        // Hilfsmittel
+        Object[][] utils = {
+                {Material.SNOWBALL, "shield", "<info><bold>Schild", "Werfen – klappt zu einer Glaswand auf."},
+                {Material.FIRE_CHARGE, "fireball", "<bad><bold>Feuerball", "Abfeuern – lässt sich zurückschlagen."},
+                {Material.BLAZE_ROD, "platform", "<info><bold>Rettungsplattform", "Schleim-Plattform unter dir für 8 s."},
+                {Material.WIND_CHARGE, "windcharge", "<txt><bold>Windkugel", "Weite Sprünge, Gegner wegschleudern."},
+                {Material.ENDER_PEARL, "enderpearl", "<ok><bold>Enderperle", "Teleport – ab in die Gegnerbasis."},
+                {Material.ARROW, "arrows", "<acc><bold>Pfeile", "Für den Flammenbogen – zündet TNT."},
+        };
+        int[] uslots = {37, 38, 39, 41, 42, 43};
+        for (int u = 0; u < utils.length; u++) {
+            double chance = plugin.items().chance((String) utils[u][1], kit) * 100;
+            gui.set(uslots[u], Gui.item((Material) utils[u][0], (String) utils[u][2], "<mut>" + utils[u][3], "",
+                    "<mut>Chance pro Item: <pri>" + String.format(Locale.ROOT, "%.1f", chance) + "%"), null);
+        }
+        int interval = plugin.getConfig().getInt("item-interval", 20);
+        gui.set(40, Gui.item(Material.CLOCK, "<acc><bold>Item-Regen", "<mut>Alle <txt>" + interval + " s<mut> ein zufälliges Item.",
+                "<mut>Volle Stapel werden übersprungen.", "", "<dim>Halte eine Rakete, um die Vorschau zu sehen."), null);
+        gui.open(viewer);
+    }
+
+    // ── Kits ─────────────────────────────────────────────────────────
+
+    public static void kits(MissileWarsPlugin plugin, de.crafterteam.missilewars.game.Game g, Player viewer) {
+        Gui gui = new Gui(3, "<dim>» <acc>Kit wählen").frame();
+        int slot = 11;
+        for (de.crafterteam.missilewars.game.Kit k : de.crafterteam.missilewars.game.Kit.values()) {
+            boolean sel = g.kit(viewer) == k;
+            List<String> lore = new ArrayList<>(List.of(k.description().split("\n")));
+            lore.add("");
+            lore.add(sel ? "<ok>✔ Ausgewählt" : "<acc>» Auswählen");
+            ItemStack it = Gui.item(k.icon(), "<acc><bold>" + k.displayName(), lore.toArray(String[]::new));
+            gui.set(slot++, sel ? Gui.glow(it) : it, p -> {
+                g.setKit(p, k);
+                p.closeInventory();
+            });
+        }
+        gui.open(viewer);
+    }
 }

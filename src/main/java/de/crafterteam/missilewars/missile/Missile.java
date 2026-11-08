@@ -183,6 +183,13 @@ public final class Missile {
             if (type.piercesGlass() && allGlass(obstacles) && pierced + obstacles.size() <= settings.pierceGlassMax()) {
                 pierced += obstacles.size();
                 for (Block o : obstacles) o.setType(Material.AIR, false);
+            } else if (type.drills() && drillable(obstacles) && pierced + obstacles.size() <= settings.pierceGlassMax()) {
+                pierced += obstacles.size();
+                for (Block o : obstacles) {
+                    world.spawnParticle(Particle.BLOCK, o.getLocation().add(0.5, 0.5, 0.5), 12, 0.3, 0.3, 0.3, o.getBlockData());
+                    o.setType(Material.AIR, false);
+                }
+                world.playSound(obstacles.getFirst().getLocation(), Sound.BLOCK_GRINDSTONE_USE, 0.8f, 1.4f);
             } else {
                 detonate(current);
                 return Result.EXPLODED;
@@ -267,6 +274,27 @@ public final class Missile {
                 if (owner != null && owner.isOnline()) t.setSource(owner);
             });
         }
+        if (type.cluster()) {
+            // Streubombe: 6 zusätzliche TNT in einem Ring um den Einschlag
+            for (int i = 0; i < 6; i++) {
+                double a = i * Math.PI / 3 + r.nextDouble(0.5);
+                double rad = 2.5 + r.nextDouble(1.5);
+                Location l = impact.clone().add(Math.cos(a) * rad, r.nextDouble(-1, 2), Math.sin(a) * rad);
+                int fuse = settings.fuseTicks() + 15 + r.nextInt(0, 20);
+                world.spawn(l, TNTPrimed.class, t -> {
+                    t.setFuseTicks(fuse);
+                    if (owner != null && owner.isOnline()) t.setSource(owner);
+                });
+            }
+        }
+    }
+
+    private static final java.util.Set<Material> HARD = java.util.EnumSet.of(Material.OBSIDIAN, Material.CRYING_OBSIDIAN,
+            Material.BEDROCK, Material.BARRIER, Material.NETHER_PORTAL, Material.REINFORCED_DEEPSLATE, Material.END_PORTAL_FRAME);
+
+    private static boolean drillable(List<Block> blocks) {
+        for (Block b : blocks) if (HARD.contains(b.getType())) return false;
+        return true;
     }
 
     private static boolean allGlass(List<Block> blocks) {

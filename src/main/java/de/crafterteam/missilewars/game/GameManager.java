@@ -43,9 +43,25 @@ public final class GameManager {
         return new ArrayList<>(games.values());
     }
 
+    public boolean singleGame() {
+        return plugin.getConfig().getBoolean("single-game.enabled", true);
+    }
+
+    /** Die eine Runde im Einzelspiel-Modus (oder null). */
+    public Game current() {
+        for (Game g : games.values()) if (g.state() != Game.State.ENDING) return g;
+        return null;
+    }
+
     public Game getOrCreate(MapConfig map) throws GameException {
+        return getOrCreate(map, false);
+    }
+
+    /** force = auch im Einzelspiel eine zweite Runde erlauben (nur für den Map-Wechsel per Abstimmung). */
+    public Game getOrCreate(MapConfig map, boolean force) throws GameException {
         Game g = games.get(map.name());
         if (g != null) return g;
+        if (singleGame() && !force && current() != null) return current();
         g = Game.create(plugin, map, nextId++);
         games.put(map.name(), g);
         return g;
@@ -67,7 +83,29 @@ public final class GameManager {
     /** Beitreten: bestimmte Map oder automatisch (wartende Runde → Standard-Map → erste fertige). */
     public void quickJoin(Player p, String mapName, boolean spectate) {
         MapConfig map = null;
-        if (mapName != null) {
+        if (singleGame()) {
+            Game cur = current();
+            if (cur == null && !games.isEmpty()) {
+                de.crafterteam.missilewars.util.Msg.send(p, "<mut>Die Runde endet gerade – du kommst gleich in die nächste.");
+                org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    if (p.isOnline() && get(p) == null) quickJoin(p, null, spectate);
+                }, 60L);
+                return;
+            }
+            if (cur != null) {
+                if (spectate) cur.spectate(p);
+                else cur.join(p);
+                return;
+            }
+            mapName = null; // Map kommt aus start-map, danach per Abstimmung
+            String start = plugin.getConfig().getString("single-game.start-map", "random");
+            if (start != null && !start.equalsIgnoreCase("random")) map = plugin.maps().get(start);
+            if (map == null || !map.ready() || !map.complete()) {
+                java.util.List<MapConfig> ready = new java.util.ArrayList<>();
+                for (MapConfig m : plugin.maps().all()) if (m.ready() && m.complete()) ready.add(m);
+                map = ready.isEmpty() ? null : ready.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(ready.size()));
+            }
+        } else if (mapName != null) {
             map = plugin.maps().get(mapName);
         } else {
             Game best = null;

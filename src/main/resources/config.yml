@@ -2,6 +2,16 @@
 #  MissileWars – Konfiguration
 # ─────────────────────────────────────────────
 
+config-version: 3
+
+# ── Einzelspiel ─────────────────────────────────────────────────
+# Es gibt immer nur EINE Runde. Spieler kommen beim Joinen automatisch rein,
+# die Map wird in der Wartelobby per Abstimmung gewählt (kein /mw join nötig).
+single-game:
+  enabled: true
+  auto-join: true         # beim Betreten des Servers direkt in die Runde
+  start-map: random       # random oder Mapname – Startwert vor der Abstimmung
+
 # ── Spielmodus-Server (Auto-Join) ───────────────────────────────
 # Für einen reinen MissileWars-Server hinter BungeeCord/Velocity:
 # Spieler landen beim Joinen automatisch in einer Runde.
@@ -31,6 +41,13 @@ tablist:
 killstreaks:
   enabled: true           # 3/5/7/10 Kills in Folge: Ansage + Bonus-Items
 
+respawn-delay: 3          # Sekunden als Zuschauer nach dem Tod (0 = sofort)
+time-limit-minutes: 15    # danach gewinnt das Team mit dem intakteren Portal (0 = aus)
+afk-seconds: 90           # AFK-Spieler werden zu Zuschauern (0 = aus)
+kits: true                # Kit-Auswahl in der Wartelobby
+lobby-double-jump: true   # Doppelsprung in der Wartelobby
+team-compass: true        # Kompass zeigt auf das gegnerische Portal
+
 # Wohin Spieler nach der Runde kommen. Mit /mw setlobby setzen.
 # Leer = zurück an den Ort, von dem sie /mw join gemacht haben.
 lobby: ''
@@ -48,7 +65,7 @@ countdown:
   full: 10          # wenn die Runde voll ist
 
 # Alle X Sekunden bekommt jeder Spieler ein zufälliges Item
-item-interval: 15
+item-interval: 20
 start-items: 1      # Items direkt beim Start
 start-arrows: 3
 
@@ -99,6 +116,11 @@ missile:
     guardian: 5
     gemini: 4
     interceptor: 2
+    hydra: 4
+    drill: 5
+    arrow: 1
+    carrier: 4
+    cluster: 4
 
 shield:
   radius: 3
@@ -116,6 +138,13 @@ items:
   guardian:     { weight: 6,  max: 1 }
   gemini:       { weight: 6,  max: 1 }
   interceptor:  { weight: 7,  max: 2 }
+  hydra:        { weight: 5,  max: 1 }
+  drill:        { weight: 5,  max: 1 }
+  arrow:        { weight: 7,  max: 2 }
+  carrier:      { weight: 4,  max: 1 }
+  cluster:      { weight: 5,  max: 1 }
+  platform:     { weight: 4,  max: 1 }               # Rettungsplattform gegen Void-Tode
+  enderpearl:   { weight: 3,  max: 1 }
   shield:       { weight: 8,  max: 2 }
   fireball:     { weight: 6,  max: 2 }
   arrows:       { weight: 8,  max: 9, amount: 3 }

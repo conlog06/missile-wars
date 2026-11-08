@@ -115,6 +115,18 @@ public final class GameListener implements Listener {
             else de.crafterteam.missilewars.gui.Menus.team(plugin, g, p);
             return;
         }
+        if (GameItems.MENU_MISSILES.equals(id)) {
+            de.crafterteam.missilewars.gui.Menus.missiles(plugin, p);
+            return;
+        }
+        if (GameItems.MENU_KIT.equals(id)) {
+            de.crafterteam.missilewars.gui.Menus.kits(plugin, g, p);
+            return;
+        }
+        if (GameItems.MENU_READY.equals(id)) {
+            g.toggleReady(p);
+            return;
+        }
         if (GameItems.MENU_GAME.equals(id)) {
             de.crafterteam.missilewars.gui.Menus.main(plugin, p);
             return;
@@ -148,6 +160,8 @@ public final class GameListener implements Listener {
                 ball.remove();
             }, delay);
             used = true;
+        } else if (GameItems.PLATFORM.equals(id)) {
+            used = g.deployPlatform(p, team);
         } else if (GameItems.FIREBALL.equals(id)) {
             Fireball fb = p.launchProjectile(Fireball.class);
             fb.setYield((float) plugin.getConfig().getDouble("fireball.yield", 2.0));
@@ -164,6 +178,38 @@ public final class GameListener implements Listener {
                 p.getInventory().setItemInMainHand(hand.getAmount() <= 0 ? null : hand);
             }
         }
+    }
+
+    // ── AFK & Doppelsprung ───────────────────────────────────────────
+
+    @EventHandler(ignoreCancelled = true)
+    public void onMove(org.bukkit.event.player.PlayerMoveEvent e) {
+        Player p = e.getPlayer();
+        Game g = gameOf(p);
+        if (g == null) return;
+        if (e.hasChangedPosition() || e.hasChangedOrientation()) g.touch(p);
+        // Doppelsprung nur in der Wartephase außerhalb der Arena
+        if (doubleJumpAllowed(p, g) && p.isOnGround() && !p.getAllowFlight()) p.setAllowFlight(true);
+    }
+
+    private boolean doubleJumpAllowed(Player p, Game g) {
+        return plugin.getConfig().getBoolean("lobby-double-jump", true)
+                && (g.state() == Game.State.WAITING || g.state() == Game.State.COUNTDOWN)
+                && !p.getWorld().equals(g.world())
+                && p.getGameMode() != GameMode.CREATIVE && p.getGameMode() != GameMode.SPECTATOR;
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onToggleFlight(org.bukkit.event.player.PlayerToggleFlightEvent e) {
+        Player p = e.getPlayer();
+        Game g = gameOf(p);
+        if (g == null || !doubleJumpAllowed(p, g) || !e.isFlying()) return;
+        e.setCancelled(true);
+        p.setAllowFlight(false);
+        p.setFlying(false);
+        p.setVelocity(p.getLocation().getDirection().multiply(1.1).setY(0.9));
+        p.getWorld().spawnParticle(org.bukkit.Particle.CLOUD, p.getLocation(), 12, 0.3, 0.1, 0.3, 0.02);
+        p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_BAT_TAKEOFF, 0.6f, 1.4f);
     }
 
     // ── Wartelobby-Schutz ────────────────────────────────────────────

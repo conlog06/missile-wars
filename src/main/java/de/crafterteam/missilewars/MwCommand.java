@@ -69,6 +69,20 @@ public final class MwCommand implements BasicCommand {
             case "map" -> map(sender, args);
             case "holo", "hologram" -> holo(sender, args);
             case "vote", "abstimmen" -> vote(sender, args);
+            case "raketen", "missiles" -> { if (sender instanceof Player p) de.crafterteam.missilewars.gui.Menus.missiles(plugin, p); }
+            case "kit", "kits" -> {
+                if (sender instanceof Player p) {
+                    Game g = plugin.games().get(p);
+                    if (g != null) de.crafterteam.missilewars.gui.Menus.kits(plugin, g, p);
+                    else Msg.send(p, "<bad>Du bist in keiner Runde.");
+                }
+            }
+            case "ready", "bereit" -> {
+                if (sender instanceof Player p) {
+                    Game g = plugin.games().get(p);
+                    if (g != null) g.toggleReady(p);
+                }
+            }
             case "menu", "menü" -> { if (sender instanceof Player p) de.crafterteam.missilewars.gui.Menus.main(plugin, p); }
             case "teleporter", "tp" -> {
                 if (sender instanceof Player p) {
@@ -96,6 +110,8 @@ public final class MwCommand implements BasicCommand {
         s.sendMessage(Msg.mm(" <acc>/mw vote [map]</acc> <mut>– Map-Abstimmung"));
         s.sendMessage(Msg.mm(" <acc>/mw leave</acc> <mut>– Runde verlassen"));
         s.sendMessage(Msg.mm(" <acc>/mw menu</acc> <mut>– Spielmenü"));
+        s.sendMessage(Msg.mm(" <acc>/mw raketen</acc> <mut>– Raketen-Übersicht"));
+        s.sendMessage(Msg.mm(" <acc>/mw kit</acc> <mut>– Kit wählen  <dim>|</dim>  <acc>/mw bereit</acc> <mut>– bereit melden"));
         s.sendMessage(Msg.mm(" <acc>/mw teleporter</acc> <mut>– (Zuschauer) zu Spielern teleportieren"));
         s.sendMessage(Msg.mm(" <acc>/mw list</acc> <mut>– Maps & Runden"));
         s.sendMessage(Msg.mm(" <acc>/mw stats [spieler]</acc> <mut>– Statistiken"));
@@ -588,7 +604,7 @@ public final class MwCommand implements BasicCommand {
         List<String> out = new ArrayList<>();
         boolean admin = s.hasPermission(ADMIN);
         if (args.length == 1) {
-            out.addAll(List.of("join", "spectate", "leave", "team", "vote", "menu", "teleporter", "list", "stats", "top"));
+            out.addAll(List.of("join", "spectate", "leave", "team", "vote", "kit", "bereit", "raketen", "menu", "teleporter", "list", "stats", "top"));
             if (admin) out.addAll(List.of("start", "stop", "setlobby", "setwaitlobby", "reload", "map", "holo"));
         } else if (args.length == 2) {
             switch (args[0].toLowerCase(Locale.ROOT)) {
