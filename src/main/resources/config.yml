@@ -2,7 +2,7 @@
 #  MissileWars – Konfiguration
 # ─────────────────────────────────────────────
 
-config-version: 3
+config-version: 4
 
 # ── Einzelspiel ─────────────────────────────────────────────────
 # Es gibt immer nur EINE Runde. Spieler kommen beim Joinen automatisch rein,
@@ -40,6 +40,17 @@ tablist:
 
 killstreaks:
   enabled: true           # 3/5/7/10 Kills in Folge: Ansage + Bonus-Items
+
+# ── Coins & Shop ────────────────────────────────────────────────
+coins:
+  enabled: true
+  kill: 10
+  win: 50
+  loss: 15            # Teilnahme
+  portal: 40          # Portal zerstört
+  missile: 1          # pro gestarteter Rakete
+  first-blood: 5
+  streak: 15          # bei 3/5/7/10er-Serie
 
 respawn-delay: 3          # Sekunden als Zuschauer nach dem Tod (0 = sofort)
 time-limit-minutes: 15    # danach gewinnt das Team mit dem intakteren Portal (0 = aus)
@@ -98,7 +109,7 @@ combat:
 portal:
   # 0 = klassisch: ein zerstörter Portalblock = Niederlage
   # z. B. 30 = Portal hat HP, verloren bei 30 % zerstörten Blöcken (Anzeige über Hologramm & Sidebar)
-  loss-percent: 0
+  loss-percent: 25
 
 missile:
   preview: true           # leuchtende Vorschau beim Halten einer Rakete

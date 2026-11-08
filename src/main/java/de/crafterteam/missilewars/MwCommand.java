@@ -69,6 +69,20 @@ public final class MwCommand implements BasicCommand {
             case "map" -> map(sender, args);
             case "holo", "hologram" -> holo(sender, args);
             case "vote", "abstimmen" -> vote(sender, args);
+            case "shop" -> { if (sender instanceof Player p) plugin.shop().open(p); }
+            case "coins", "münzen" -> {
+                if (sender instanceof Player p) Msg.send(p, "Du hast <acc>" + plugin.stats().coins(p) + " Coins<mut>. <dim>/mw shop");
+            }
+            case "givecoins" -> {
+                if (admin(sender) && args.length >= 3) {
+                    Player t = Bukkit.getPlayerExact(args[1]);
+                    int n = parseInt(args[2], 0);
+                    if (t == null || n == 0) { Msg.send(sender, "<bad>/mw givecoins <spieler> <anzahl>"); return true; }
+                    plugin.stats().add(t, Stat.COINS, n);
+                    plugin.stats().save();
+                    Msg.send(sender, "<ok>" + n + " Coins an " + Msg.esc(t.getName()) + ".");
+                }
+            }
             case "raketen", "missiles" -> { if (sender instanceof Player p) de.crafterteam.missilewars.gui.Menus.missiles(plugin, p); }
             case "kit", "kits" -> {
                 if (sender instanceof Player p) {
@@ -111,6 +125,7 @@ public final class MwCommand implements BasicCommand {
         s.sendMessage(Msg.mm(" <acc>/mw leave</acc> <mut>– Runde verlassen"));
         s.sendMessage(Msg.mm(" <acc>/mw menu</acc> <mut>– Spielmenü"));
         s.sendMessage(Msg.mm(" <acc>/mw raketen</acc> <mut>– Raketen-Übersicht"));
+        s.sendMessage(Msg.mm(" <acc>/mw shop</acc> <mut>– Shop  <dim>|</dim>  <acc>/mw coins</acc> <mut>– Kontostand"));
         s.sendMessage(Msg.mm(" <acc>/mw kit</acc> <mut>– Kit wählen  <dim>|</dim>  <acc>/mw bereit</acc> <mut>– bereit melden"));
         s.sendMessage(Msg.mm(" <acc>/mw teleporter</acc> <mut>– (Zuschauer) zu Spielern teleportieren"));
         s.sendMessage(Msg.mm(" <acc>/mw list</acc> <mut>– Maps & Runden"));
@@ -604,13 +619,13 @@ public final class MwCommand implements BasicCommand {
         List<String> out = new ArrayList<>();
         boolean admin = s.hasPermission(ADMIN);
         if (args.length == 1) {
-            out.addAll(List.of("join", "spectate", "leave", "team", "vote", "kit", "bereit", "raketen", "menu", "teleporter", "list", "stats", "top"));
-            if (admin) out.addAll(List.of("start", "stop", "setlobby", "setwaitlobby", "reload", "map", "holo"));
+            out.addAll(List.of("join", "spectate", "leave", "team", "vote", "kit", "bereit", "raketen", "shop", "coins", "menu", "teleporter", "list", "stats", "top"));
+            if (admin) out.addAll(List.of("start", "stop", "setlobby", "setwaitlobby", "reload", "map", "holo", "givecoins"));
         } else if (args.length == 2) {
             switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "join", "spectate", "start", "stop", "vote" -> plugin.maps().all().forEach(m -> out.add(m.name()));
                 case "team" -> out.addAll(List.of("gruen", "rot"));
-                case "top" -> out.addAll(List.of("wins", "kills", "raketen", "portale", "runden", "tode"));
+                case "top" -> out.addAll(List.of("wins", "kills", "raketen", "portale", "runden", "tode", "coins"));
                 case "stats" -> Bukkit.getOnlinePlayers().forEach(pl -> out.add(pl.getName()));
                 case "holo", "hologram" -> { if (admin) out.addAll(List.of("add", "remove", "list")); }
                 case "map" -> {

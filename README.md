@@ -22,6 +22,20 @@ Alte Clients (1.8 / 1.12) kommen per **ViaVersion + ViaBackwards** auf den Serve
 
 Die Raketen werden vom Plugin bewegt (wie Flugmaschinen, aber ohne echtes Redstone) – das läuft stabil, ohne Lag und unabhängig von Redstone-Änderungen in neuen Versionen.
 
+## Neu in 2.2.0
+
+**Coins & Shop** (`/mw shop`, Smaragd in der Wartelobby)
+- Coins für Kills (10), Sieg (50), Teilnahme (15), Portal zerstört (40), Raketen (1), First Blood (5), Killstreaks (15) – alles in `coins:` einstellbar
+- **Kits** dauerhaft freischalten (Angreifer/Verteidiger 400, Techniker/Sprinter 600; Standard gratis)
+- **Raketen-Spuren**: Seelenfeuer, Funken, Sternenstaub, Herzen, Kirschblüten, Musik, Totem
+- **Kill-Effekte**: Feuerwerk, Blitz, Herzregen, Seelen
+- **Rundenboosts** (vor dem Start): Start-Tomahawk, -Schild, -Plattform, Pfeil-Bündel, Start-Juggernaut
+- `/mw coins`, `/mw top coins`, Admin: `/mw givecoins <spieler> <anzahl>`
+
+**Portal-Fortschritt im Scoreboard** – Balken + Prozent für beide Teams. Standard ist jetzt „verloren bei 25 % zerstört" (`portal.loss-percent`, 0 = klassisch ein Block).
+
+**Fix:** „Bereit" hat den Countdown in einer Endlosschleife auf 5 s zurückgesetzt.
+
 ## Neu in 2.1.0
 
 **Nur noch eine Runde** – Spieler kommen beim Betreten des Servers automatisch rein, `/mw join` ist nicht mehr nötig. Die Map wird in der Wartelobby per Abstimmung gewählt (Startwert: zufällige Map). Nach der Runde geht's automatisch in die nächste. (`single-game` in der Config)

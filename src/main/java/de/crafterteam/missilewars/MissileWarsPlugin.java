@@ -30,14 +30,21 @@ public final class MissileWarsPlugin extends JavaPlugin {
     private de.crafterteam.missilewars.map.WaitingLobby waitingLobby;
     private de.crafterteam.missilewars.network.ServerMode serverMode;
     private de.crafterteam.missilewars.rank.NameTags nameTags;
+    private de.crafterteam.missilewars.shop.Shop shop;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
         // Migration alter Configs (vor 2.1): Item-Intervall auf 20 s
-        if (!getConfig().isSet("config-version")) {
+        int cfgVersion = getConfig().isSet("config-version") ? getConfig().getInt("config-version") : 2;
+        if (cfgVersion < 3) {
             getConfig().set("item-interval", 20);
             getLogger().info("Config migriert: item-interval = 20 s, Einzelspiel-Modus aktiv.");
+        }
+        if (cfgVersion < 4) {
+            getConfig().set("portal.loss-percent", 25);
+            getConfig().set("config-version", 4);
+            getLogger().info("Config migriert: Portal-HP-Modus (25 %) für Fortschritt im Scoreboard.");
         }
         getConfig().options().copyDefaults(true);   // neue Optionen in alte config.yml übernehmen
         saveConfig();
@@ -51,6 +58,7 @@ public final class MissileWarsPlugin extends JavaPlugin {
         waitingLobby = new de.crafterteam.missilewars.map.WaitingLobby(this);
         serverMode = new de.crafterteam.missilewars.network.ServerMode(this);
         nameTags = new de.crafterteam.missilewars.rank.NameTags(this);
+        shop = new de.crafterteam.missilewars.shop.Shop(this);
         maps.load();
         stats.load();
         signs.load();
@@ -92,6 +100,7 @@ public final class MissileWarsPlugin extends JavaPlugin {
     public de.crafterteam.missilewars.map.WaitingLobby waitingLobby() { return waitingLobby; }
     public de.crafterteam.missilewars.network.ServerMode serverMode() { return serverMode; }
     public de.crafterteam.missilewars.rank.NameTags nameTags() { return nameTags; }
+    public de.crafterteam.missilewars.shop.Shop shop() { return shop; }
     public MapManager maps() { return maps; }
     public GameManager games() { return games; }
     public GameItems items() { return items; }

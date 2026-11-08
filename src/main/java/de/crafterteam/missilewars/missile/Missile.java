@@ -56,6 +56,7 @@ public final class Missile {
     private final int ticksPerStep;
     private final Player owner;
     private final Settings settings;
+    private final Particle trail;
     /** Position → erwartetes Material (zum Erkennen von abgebauten Teilen). */
     private Map<Pos, Material> parts;
     private int tickCounter;
@@ -63,7 +64,8 @@ public final class Missile {
     private int pierced;
 
     public Missile(World world, MissileType type, boolean axisX, int dir, int ticksPerStep, Player owner,
-                   Map<Pos, Material> parts, Settings settings) {
+                   Map<Pos, Material> parts, Settings settings, Particle trail) {
+        this.trail = trail == null ? Particle.FLAME : trail;
         this.world = world;
         this.type = type;
         this.dir = dir;
@@ -249,7 +251,7 @@ public final class Missile {
     private void effects(Set<Pos> positions) {
         int rear = track(positions);
         Location tail = at(rear + 0.5 - dir * 0.8, centerX, centerY);
-        world.spawnParticle(Particle.FLAME, tail, 4, 0.2, 0.2, 0.1, 0.01);
+        world.spawnParticle(trail, tail, 4, 0.2, 0.2, 0.1, 0.01);
         world.spawnParticle(Particle.CLOUD, tail, 2, 0.2, 0.2, 0.1, 0.01);
         if (steps % 3 == 0) world.playSound(tail, Sound.BLOCK_PISTON_EXTEND, 0.35f, 1.6f);
     }

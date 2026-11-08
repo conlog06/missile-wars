@@ -115,6 +115,10 @@ public final class GameListener implements Listener {
             else de.crafterteam.missilewars.gui.Menus.team(plugin, g, p);
             return;
         }
+        if (GameItems.MENU_SHOP.equals(id)) {
+            plugin.shop().open(p);
+            return;
+        }
         if (GameItems.MENU_MISSILES.equals(id)) {
             de.crafterteam.missilewars.gui.Menus.missiles(plugin, p);
             return;

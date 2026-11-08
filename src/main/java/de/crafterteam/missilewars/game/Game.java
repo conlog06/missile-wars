@@ -380,6 +380,7 @@ public final class Game {
         }
         if (state == State.COUNTDOWN && teams.size() < min()) {
             state = State.WAITING;
+            readyTriggered = false;
             broadcast("<bad>Zu wenige Spieler – Countdown abgebrochen.");
         }
         updateBoard();
@@ -503,6 +504,7 @@ public final class Game {
         spectators.clear();
         transferring = true;
         ng.kits.putAll(kits);
+        ng.boosts.putAll(boosts);
         ng.votingDone = true;
         ng.state = State.COUNTDOWN;
         ng.countdown = Math.max(countdown, 5);
@@ -555,7 +557,8 @@ public final class Game {
                 checkReady();
                 if (teams.size() < min() && countdown > 5) {
                     state = State.WAITING;
-                    broadcast("<bad>Zu wenige Spieler – Countdown abgebrochen.");
+                    readyTriggered = false;
+            broadcast("<bad>Zu wenige Spieler – Countdown abgebrochen.");
                     break;
                 }
                 if (!votingDone && countdown <= plugin.getConfig().getInt("voting.end-at", 10)) {
@@ -676,6 +679,7 @@ public final class Game {
             kit(p).apply(p);
             touch(p);
             if (kit(p).startItem() != null) p.getInventory().addItem(plugin.items().create(kit(p).startItem()));
+            giveBoosts(p);
             for (int i = 0; i < startItems; i++) giveItem(p);
             p.showTitle(Title.title(Msg.mm("<ok><bold>Los!"),
                     Msg.mm("<mut>Zerstöre das Portal von Team " + t.other().colored()),
@@ -743,6 +747,7 @@ public final class Game {
                     Player hp = hitter == null ? null : Bukkit.getPlayer(hitter);
                     if (hp != null && team(hp) == t.other()) {
                         plugin.stats().add(hp, Stat.PORTALS, 1);
+                        plugin.shop().reward(hp, "portal", "Portal zerstört");
                         by = " <dim>(von <txt>" + Msg.esc(hp.getName()) + "<dim>)";
                     }
                     updatePortalHolograms();
@@ -856,6 +861,7 @@ public final class Game {
         if (!firstBlood) {
             firstBlood = true;
             broadcast("<bad><bold>FIRST BLOOD!</bold> <txt>" + Msg.esc(k.getName()) + " <mut>hat den ersten Kill.");
+            plugin.shop().reward(k, "first-blood", "First Blood");
             for (Player p : everyone()) p.playSound(p.getLocation(), Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 0.4f, 1.4f);
         }
         int streak = streaks.merge(k.getUniqueId(), 1, Integer::sum);
@@ -872,6 +878,7 @@ public final class Game {
         k.showTitle(Title.title(Msg.mm("<bold>" + title), Msg.mm("<mut>" + streak + " Kills in Folge – Bonus-Item!"),
                 Title.Times.times(Duration.ZERO, Duration.ofMillis(1500), Duration.ofMillis(400))));
         k.playSound(k.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1.2f);
+        plugin.shop().reward(k, "streak", "Killstreak");
         // Belohnung: Bonus-Item (ab 5er-Serie zusätzlich eine Rakete)
         giveItem(k);
         if (streak >= 5) {
@@ -922,6 +929,7 @@ public final class Game {
         Team t = team(p);
         if (t == null) return;
         String killer = null;
+        Player killerP = null;
         Long when = lastAttackTime.get(p.getUniqueId());
         if (when != null && System.currentTimeMillis() - when < 10_000) {
             Player k = Bukkit.getPlayer(lastAttacker.get(p.getUniqueId()));
@@ -930,6 +938,8 @@ public final class Game {
                 round(k.getUniqueId())[0]++;
                 plugin.stats().add(k, Stat.KILLS, 1);
                 k.playSound(k.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1.2f);
+                killerP = k;
+                plugin.shop().reward(k, "kill", "Kill");
                 onKill(k);
             }
         }
@@ -949,9 +959,7 @@ public final class Game {
 
         // Kill-Effekt am Todesort
         Location at = p.getLocation().add(0, 1, 0);
-        world.spawnParticle(org.bukkit.Particle.DUST, at, 40, 0.4, 0.6, 0.4, 0,
-                new org.bukkit.Particle.DustOptions(t.armorColor(), 1.6f));
-        world.spawnParticle(org.bukkit.Particle.LARGE_SMOKE, at, 10, 0.3, 0.4, 0.3, 0.02);
+        plugin.shop().playKillEffect(killerP, at, t.armorColor());
         world.playSound(at, Sound.ENTITY_PLAYER_DEATH, 0.8f, 1f);
 
         p.setFireTicks(0);
@@ -1010,6 +1018,11 @@ public final class Game {
             Msg.send(p, "<bad>Kits wählt man vor dem Start.");
             return;
         }
+        if (!plugin.shop().ownsKit(p, k)) {
+            Msg.send(p, "<bad>Dieses Kit ist noch gesperrt. <mut>Freischalten im Shop für <acc>"
+                    + de.crafterteam.missilewars.shop.Shop.KIT_PRICES.get(k) + " Coins<mut>.");
+            return;
+        }
         kits.put(p.getUniqueId(), k);
         Msg.send(p, "Kit <acc>" + k.displayName() + " <mut>ausgewählt.");
         p.playSound(p.getLocation(), Sound.ITEM_ARMOR_EQUIP_GENERIC, 1f, 1.2f);
@@ -1020,6 +1033,7 @@ public final class Game {
         Team t = team(p);
         if (t == null) return;
         if (!ready.remove(p.getUniqueId())) {
+            // (Bereit melden)
             ready.add(p.getUniqueId());
             broadcast("<txt>" + Msg.esc(p.getName()) + " <ok>ist bereit <dim>(" + readyCount() + "/" + teams.size() + ")");
         } else {
@@ -1039,11 +1053,38 @@ public final class Game {
     /** Alle bereit (und genug Spieler) → Countdown auf 5 s verkürzen. */
     private void checkReady() {
         if (teams.size() < min() || readyCount() < teams.size()) return;
-        if (state == State.WAITING) state = State.COUNTDOWN;
-        if (countdown > 5 || countdown <= 0) {
+        if (readyTriggered) return;            // nur einmal verkürzen (vorher: Endlosschleife bei 0)
+        readyTriggered = true;
+        if (state == State.WAITING) {
+            state = State.COUNTDOWN;
             countdown = 5;
-            broadcast("<ok>Alle sind bereit – es geht gleich los!");
+        } else if (countdown > 5) {
+            countdown = 5;
         }
+        broadcast("<ok>Alle sind bereit – es geht gleich los!");
+    }
+
+    public boolean hasBoost(Player p, String id) {
+        Set<String> b = boosts.get(p.getUniqueId());
+        return b != null && b.contains(id);
+    }
+
+    public void addBoost(Player p, String id) {
+        boosts.computeIfAbsent(p.getUniqueId(), k -> new HashSet<>()).add(id);
+    }
+
+    private void giveBoosts(Player p) {
+        Set<String> b = boosts.remove(p.getUniqueId());
+        if (b == null) return;
+        for (String id : b) {
+            de.crafterteam.missilewars.shop.Shop.Boost boost = de.crafterteam.missilewars.shop.Shop.BOOSTS.get(id);
+            if (boost == null) continue;
+            for (int i = 0; i < boost.amount(); i++) {
+                ItemStack it = plugin.items().create(boost.item());
+                if (it != null) p.getInventory().addItem(it);
+            }
+        }
+        Msg.send(p, "<ok>Deine Boosts sind im Inventar.");
     }
 
     public void touch(Player p) {
@@ -1203,7 +1244,8 @@ public final class Game {
             public int pierceGlassMax() { return plugin.getConfig().getInt("missile.pierce-glass-max", 12); }
             public double removeBeyond() { return removeBeyond; }
         };
-        missiles.add(new Missile(world, type, map.axisX(), dir, speed, p, parts, settings));
+        missiles.add(new Missile(world, type, map.axisX(), dir, speed, p, parts, settings, plugin.shop().trail(p)));
+        plugin.shop().reward(p, "missile", "Rakete");
         round(p.getUniqueId())[2]++;
         plugin.stats().add(p, Stat.MISSILES, 1);
         world.playSound(origin.getLocation(), Sound.BLOCK_PISTON_EXTEND, 1f, 0.7f);
@@ -1266,6 +1308,8 @@ public final class Game {
         broadcast("Team " + winner.colored() + " <mut>hat gewonnen! <dim>(" + formatTime(seconds) + ")");
         for (Player p : players()) {
             plugin.stats().add(p, team(p) == winner ? Stat.WINS : Stat.LOSSES, 1);
+            if (team(p) == winner) plugin.shop().reward(p, "win", "Sieg");
+            else plugin.shop().reward(p, "loss", "Teilnahme");
             plugin.preview().hide(p);
             p.hideBossBar(bossBar);
         }
@@ -1338,7 +1382,9 @@ public final class Game {
     private boolean firstBlood;
     private final Map<UUID, Kit> kits = new HashMap<>();
     private final Set<UUID> ready = new HashSet<>();
+    private boolean readyTriggered;
     private final Set<UUID> respawning = new HashSet<>();
+    private final Map<UUID, Set<String>> boosts = new HashMap<>();
     private final Map<UUID, Long> lastActive = new HashMap<>();
     private final Map<UUID, Integer> streaks = new HashMap<>();
 
@@ -1419,11 +1465,17 @@ public final class Game {
         lines.add(" ");
         lines.add(Team.GREEN.colored() + "<mut>: <txt>" + teamPlayers(Team.GREEN).size());
         lines.add(Team.RED.colored() + "<mut>: <txt>" + teamPlayers(Team.RED).size());
-        if (state == State.RUNNING && lossPercent() > 0) {
+        if (state == State.RUNNING) {
             lines.add("   ");
+            lines.add("<mut>Portal-Zustand");
             for (Team t : Team.values()) {
                 int hp = portalHp.getOrDefault(t, 100);
-                lines.add("<mut>Portal " + t.colored() + "<mut>: " + (hp > 60 ? "<ok>" : hp > 25 ? "<acc>" : "<bad>") + hp + "%");
+                String col = hp > 60 ? "ok" : hp > 25 ? "acc" : "bad";
+                if (lossPercent() > 0) {
+                    lines.add(t.colored() + " " + Msg.bar(hp / 100.0, 10, col) + " <" + col + ">" + hp + "%");
+                } else {
+                    lines.add(t.colored() + " <ok>intakt <dim>(1 Treffer = aus)");
+                }
             }
         }
         if (state == State.RUNNING) {

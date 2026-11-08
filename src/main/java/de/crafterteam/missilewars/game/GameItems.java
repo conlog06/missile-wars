@@ -38,6 +38,7 @@ public final class GameItems {
     public static final String MENU_KIT = "menu_kit";
     public static final String MENU_MISSILES = "menu_missiles";
     public static final String MENU_READY = "menu_ready";
+    public static final String MENU_SHOP = "menu_shop";
 
     public static final List<String> ALL_IDS = List.of(
             "tomahawk", "juggernaut", "shieldbuster", "lightning", "guardian", "gemini", "interceptor",
@@ -95,6 +96,8 @@ public final class GameItems {
                     "<mut>Alle Raketen & Items im Überblick", "<dim>Rechtsklick");
             case MENU_READY -> tagged(new ItemStack(Material.LIME_DYE), id, "<ok><bold>Bereit!",
                     "<mut>Wenn alle bereit sind, startet die Runde sofort", "<dim>Rechtsklick");
+            case MENU_SHOP -> tagged(new ItemStack(Material.EMERALD), id, "<ok><bold>Shop",
+                    "<mut>Kits, Raketen-Spuren, Kill-Effekte, Boosts", "<dim>Rechtsklick");
             case MENU_GAME -> tagged(new ItemStack(Material.RECOVERY_COMPASS), id, "<pri><bold>Spielmenü",
                     "<mut>Maps, Statistiken, Bestenliste", "<dim>Rechtsklick");
             case MENU_VOTE -> tagged(new ItemStack(Material.MAP), id, "<pri><bold>Map-Abstimmung",
@@ -187,6 +190,7 @@ public final class GameItems {
         if (ready) readyItem = tagged(new ItemStack(Material.GRAY_DYE), MENU_READY, "<mut><bold>Nicht mehr bereit",
                 "<ok>Du bist bereit.", "<dim>Rechtsklick zum Zurücknehmen");
         p.getInventory().setItem(6, readyItem);
+        if (plugin.getConfig().getBoolean("coins.enabled", true)) p.getInventory().setItem(5, create(MENU_SHOP));
         Material wool = team == Team.GREEN ? Material.LIME_WOOL : Material.RED_WOOL;
         p.getInventory().setItem(0, tagged(new ItemStack(wool), MENU_TEAM, "<acc><bold>Team wählen",
                 "<mut>Rechtsklick"));

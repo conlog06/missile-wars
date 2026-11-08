@@ -103,6 +103,10 @@ public final class Menus {
         gui.set(38, Gui.head(viewer, "<pri><bold>Deine Statistiken", statLore(e).toArray(String[]::new)), null);
         gui.set(40, Gui.item(Material.GOLD_BLOCK, "<acc><bold>Bestenliste", "<mut>Top 10 nach Siegen", "", "<acc>» Klicken"),
                 p -> top(plugin, p));
+        gui.set(39, Gui.item(Material.EMERALD, "<ok><bold>Shop", "<mut>Coins: <acc>" + plugin.stats().coins(viewer), "", "<acc>» Öffnen"),
+                p -> plugin.shop().open(p));
+        gui.set(41, Gui.item(Material.KNOWLEDGE_BOOK, "<pri><bold>Raketen-Übersicht", "", "<acc>» Öffnen"),
+                p -> missiles(plugin, p));
         gui.set(42, Gui.item(Material.BARRIER, "<bad>Schließen"), Player::closeInventory);
         gui.open(viewer);
     }
@@ -120,6 +124,7 @@ public final class Menus {
         l.add("<mut>K/D: <txt>" + String.format(Locale.ROOT, "%.2f", deaths == 0 ? kills : kills / (double) deaths));
         l.add("<mut>Raketen: <info>" + e.get(Stat.MISSILES));
         l.add("<mut>Portale zerstört: <acc>" + e.get(Stat.PORTALS));
+        l.add("<mut>Coins: <acc>" + e.get(Stat.COINS) + " ⛃");
         return l;
     }
 
@@ -213,9 +218,11 @@ public final class Menus {
         int slot = 11;
         for (de.crafterteam.missilewars.game.Kit k : de.crafterteam.missilewars.game.Kit.values()) {
             boolean sel = g.kit(viewer) == k;
+            boolean owned = plugin.shop().ownsKit(viewer, k);
             List<String> lore = new ArrayList<>(List.of(k.description().split("\n")));
             lore.add("");
-            lore.add(sel ? "<ok>✔ Ausgewählt" : "<acc>» Auswählen");
+            lore.add(sel ? "<ok>✔ Ausgewählt" : owned ? "<acc>» Auswählen"
+                    : "<bad>🔒 Gesperrt <dim>– im Shop für " + de.crafterteam.missilewars.shop.Shop.KIT_PRICES.get(k) + " Coins");
             ItemStack it = Gui.item(k.icon(), "<acc><bold>" + k.displayName(), lore.toArray(String[]::new));
             gui.set(slot++, sel ? Gui.glow(it) : it, p -> {
                 g.setKit(p, k);
