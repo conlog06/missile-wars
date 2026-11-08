@@ -29,7 +29,7 @@ public final class VoteMenu {
 
     public static void open(MissileWarsPlugin plugin, Game game, Player viewer) {
         if (!game.votingOpen()) {
-            Msg.send(viewer, "<red>Die Abstimmung ist vorbei.");
+            Msg.send(viewer, "<bad>Die Abstimmung ist vorbei.");
             return;
         }
         List<MapConfig> maps = game.votableMaps();
@@ -49,31 +49,31 @@ public final class VoteMenu {
         for (MapConfig m : maps) {
             String name = m.name();
             boolean current = name.equals(game.map().name());
-            Component label = Msg.mm((current ? "<yellow>" : "<white>") + name + " <gray>(" + game.votesFor(name) + ")");
+            Component label = Msg.mm((current ? "<acc>" : "<txt>") + name + " <mut>(" + game.votesFor(name) + ")");
             DialogAction action = DialogAction.customClick((response, audience) -> Bukkit.getScheduler().runTask(plugin, () -> {
                 Player p = Bukkit.getPlayer(id);
                 Game g = p == null ? null : plugin.games().get(p);
                 if (g != null) g.vote(p, name);
             }), once);
-            buttons.add(ActionButton.builder(label).tooltip(Msg.mm("<gray>" + describe(m) + (current ? "\n<yellow>aktuelle Map" : "")))
+            buttons.add(ActionButton.builder(label).tooltip(Msg.mm("<mut>" + describe(m) + (current ? "\n<acc>aktuelle Map" : "")))
                     .width(150).action(action).build());
         }
         Dialog d = Dialog.create(b -> b.empty()
-                .base(DialogBase.builder(Msg.mm("<red><bold>Missile</bold><white><bold>Wars</bold> <gray>– Map-Abstimmung"))
+                .base(DialogBase.builder(Msg.mm("<logo> <mut>– Map-Abstimmung"))
                         .canCloseWithEscape(true).pause(false)
                         .afterAction(DialogBase.DialogAfterAction.CLOSE)
-                        .body(List.of(DialogBody.plainMessage(Msg.mm("<gray>Für welche Map stimmst du? Die Abstimmung endet kurz vor dem Start."))))
+                        .body(List.of(DialogBody.plainMessage(Msg.mm("<mut>Für welche Map stimmst du? Die Abstimmung endet kurz vor dem Start."))))
                         .build())
-                .type(DialogType.multiAction(buttons, ActionButton.builder(Msg.mm("<gray>Schließen")).width(150).build(), 2)));
+                .type(DialogType.multiAction(buttons, ActionButton.builder(Msg.mm("<mut>Schließen")).width(150).build(), 2)));
         viewer.showDialog(d);
     }
 
     private static void openChat(Game game, Player viewer, List<MapConfig> maps) {
-        Msg.send(viewer, "<gold>Map-Abstimmung <gray>– klicke eine Map:");
+        Msg.send(viewer, "<pri>Map-Abstimmung <mut>– klicke eine Map:");
         for (MapConfig m : maps) {
-            viewer.sendMessage(Msg.mm(" <dark_gray>» <yellow><u>" + m.name() + "</u> <gray>(" + game.votesFor(m.name()) + " Stimmen)")
+            viewer.sendMessage(Msg.mm(" <dim>» <acc><u>" + m.name() + "</u> <mut>(" + game.votesFor(m.name()) + " Stimmen)")
                     .clickEvent(ClickEvent.runCommand("/mw vote " + m.name()))
-                    .hoverEvent(HoverEvent.showText(Msg.mm("<gray>" + describe(m)))));
+                    .hoverEvent(HoverEvent.showText(Msg.mm("<mut>" + describe(m)))));
         }
     }
 }

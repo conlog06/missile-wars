@@ -64,6 +64,47 @@ public final class GameManager {
         byPlayer.values().removeIf(x -> x == g);
     }
 
+    /** Beitreten: bestimmte Map oder automatisch (wartende Runde → Standard-Map → erste fertige). */
+    public void quickJoin(Player p, String mapName, boolean spectate) {
+        MapConfig map = null;
+        if (mapName != null) {
+            map = plugin.maps().get(mapName);
+        } else {
+            Game best = null;
+            for (Game g : games.values()) {
+                if (g.state() != Game.State.WAITING && g.state() != Game.State.COUNTDOWN) continue;
+                if (best == null || g.playerCount() > best.playerCount()) best = g;
+            }
+            if (best != null) map = best.map();
+            if (map == null) {
+                String def = plugin.getConfig().getString("server-mode.map", "");
+                if (def == null || def.isBlank()) def = plugin.getConfig().getString("default-map", "standard");
+                map = plugin.maps().get(def);
+                // läuft dort schon eine Runde und Late-Join ist aus? → andere freie Map suchen
+                Game running = map == null ? null : games.get(map.name());
+                if (running != null && running.state() == Game.State.ENDING) map = null;
+            }
+            if (map == null) {
+                for (MapConfig m : plugin.maps().all()) {
+                    if (!m.ready() || !m.complete()) continue;
+                    Game g = games.get(m.name());
+                    if (g == null || g.state() != Game.State.ENDING) { map = m; break; }
+                }
+            }
+        }
+        if (map == null) {
+            de.crafterteam.missilewars.util.Msg.send(p, "<bad>Gerade ist keine Map frei. <mut>/mw list");
+            return;
+        }
+        try {
+            Game g = getOrCreate(map);
+            if (spectate) g.spectate(p);
+            else g.join(p);
+        } catch (GameException e) {
+            de.crafterteam.missilewars.util.Msg.send(p, "<bad>" + de.crafterteam.missilewars.util.Msg.esc(e.getMessage()));
+        }
+    }
+
     public void shutdownAll() {
         for (Game g : all()) g.shutdown();
     }

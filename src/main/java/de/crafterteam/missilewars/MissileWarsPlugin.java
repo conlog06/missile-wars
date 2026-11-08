@@ -27,6 +27,9 @@ public final class MissileWarsPlugin extends JavaPlugin {
     private JoinSigns signs;
     private MissilePreview preview;
     private LeaderboardHolograms holograms;
+    private de.crafterteam.missilewars.map.WaitingLobby waitingLobby;
+    private de.crafterteam.missilewars.network.ServerMode serverMode;
+    private de.crafterteam.missilewars.rank.NameTags nameTags;
 
     @Override
     public void onEnable() {
@@ -40,6 +43,9 @@ public final class MissileWarsPlugin extends JavaPlugin {
         signs = new JoinSigns(this);
         preview = new MissilePreview(this);
         holograms = new LeaderboardHolograms(this);
+        waitingLobby = new de.crafterteam.missilewars.map.WaitingLobby(this);
+        serverMode = new de.crafterteam.missilewars.network.ServerMode(this);
+        nameTags = new de.crafterteam.missilewars.rank.NameTags(this);
         maps.load();
         stats.load();
         signs.load();
@@ -47,6 +53,11 @@ public final class MissileWarsPlugin extends JavaPlugin {
         holograms.load();
         holograms.start();
         games.cleanupLeftovers();
+        waitingLobby.init();
+        serverMode.init();
+        nameTags.init();
+        getServer().getPluginManager().registerEvents(serverMode, this);
+        getServer().getPluginManager().registerEvents(nameTags, this);
         // Stats regelmäßig sichern
         Bukkit.getScheduler().runTaskTimer(this, stats::save, 20L * 300, 20L * 300);
 
@@ -65,6 +76,7 @@ public final class MissileWarsPlugin extends JavaPlugin {
         if (games != null) games.shutdownAll();
         if (preview != null) preview.hideAll();
         if (holograms != null) holograms.despawnAll();
+        if (waitingLobby != null) waitingLobby.shutdown();
         if (stats != null) stats.save();
     }
 
@@ -72,6 +84,9 @@ public final class MissileWarsPlugin extends JavaPlugin {
     public JoinSigns signs() { return signs; }
     public MissilePreview preview() { return preview; }
     public LeaderboardHolograms holograms() { return holograms; }
+    public de.crafterteam.missilewars.map.WaitingLobby waitingLobby() { return waitingLobby; }
+    public de.crafterteam.missilewars.network.ServerMode serverMode() { return serverMode; }
+    public de.crafterteam.missilewars.rank.NameTags nameTags() { return nameTags; }
     public MapManager maps() { return maps; }
     public GameManager games() { return games; }
     public GameItems items() { return items; }

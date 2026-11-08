@@ -22,6 +22,38 @@ Alte Clients (1.8 / 1.12) kommen per **ViaVersion + ViaBackwards** auf den Serve
 
 Die Raketen werden vom Plugin bewegt (wie Flugmaschinen, aber ohne echtes Redstone) – das läuft stabil, ohne Lag und unabhängig von Redstone-Änderungen in neuen Versionen.
 
+## Neu in 2.0.0
+
+**Wartelobby** – eine generierte, schwebende Lobby-Insel (Denkmal-Rakete, Teamsäulen, Leuchtboden, Hologramm). Spieler warten dort bis zum Start, danach geht's in die Arena. Eigene Lobby: `/mw setwaitlobby`.
+
+**Arena ausgebaut** – Obsidian-**Schutzbunker** vor jedem Portal (Spawn + Schutz für den unteren Portalteil), Glas-Seitenwände, Crying-Obsidian-Akzente, Leuchtsäulen, Stützen unter den Plattformen, Deko-Insel unter der Mitte, zweifarbiger Boden.
+> Bestehende generierte Maps bekommen das neue Design automatisch bei der nächsten Runde.
+
+**Mitfahren** – nur auf **Guardian, Juggernaut und Gemini** (steht im Tooltip). Andere Raketen schieben nur, wer im Weg steht.
+
+**Spielmodus / Auto-Join** – `server-mode.enabled: true`: Spieler landen beim Joinen direkt in einer Runde, nach der Runde geht's automatisch in die nächste (oder zurück auf den Lobby-Server). Join/Quit-Nachrichten aus, MOTD zeigt den Rundenstatus.
+
+**BungeeCord / Velocity** – `bungee.enabled` + `bungee.lobby-server`: „Verlassen" und Rundenende schicken Spieler auf den Lobby-Server.
+
+**NameTags & Tab** – Rang-Präfixe aus **LuckPerms** (optional, `&`-Codes, Hex und MiniMessage) über dem Kopf, in der Tab-Liste und im Spielchat; Tab nach Team & Gruppengewicht sortiert; Tab-Header/Footer mit Status.
+
+**Neues Design** – eigene Farbpalette mit Verläufen (Orange/Pink/Gold), Spielmenü (Kompass) mit Map-Status, Statistik-Kopf & Bestenliste, neues Team-Menü mit Rahmen, Zuschauer-Teleporter (`/mw teleporter`).
+
+**Killstreaks & First Blood** – Ansagen bei 3/5/7/10 Kills in Folge mit Bonus-Items (ab 5er-Serie extra Rakete).
+
+### Setup als Spielmodus-Server (BungeeCord)
+```yaml
+server-mode:
+  enabled: true
+  after-game: requeue      # oder lobby-server
+bungee:
+  enabled: true
+  lobby-server: lobby
+tablist:
+  server-name: play.deinserver.de
+```
+In `spigot.yml` `settings.bungeecord: true` (bzw. Velocity-Forwarding in `paper-global.yml`) setzen.
+
 ## Neu in 1.3.0
 
 **Raketen komplett überarbeitet**
@@ -81,11 +113,14 @@ Die Raketen werden vom Plugin bewegt (wie Flugmaschinen, aber ohne echtes Redsto
 | `/mw vote [map]` | Map-Abstimmung |
 | `/mw leave` | Verlassen – Inventar & Position werden wiederhergestellt |
 | `/mw list` | Maps & laufende Runden |
+| `/mw menu` | Spielmenü |
+| `/mw teleporter` | (Zuschauer) Spieler-Teleporter |
 | `/mw stats [spieler]` | Statistiken |
 | `/mw top [stat]` | Bestenliste |
 | `/mw start [map]` | *(Admin)* sofort starten |
 | `/mw stop <map>` | *(Admin)* Runde beenden |
 | `/mw setlobby` | *(Admin)* Ziel nach der Runde |
+| `/mw setwaitlobby` | *(Admin)* eigene Wartelobby statt der generierten |
 | `/mw reload` | *(Admin)* Config & Maps neu laden |
 | `/mw holo add <stat>` / `remove` / `list` | *(Admin)* Bestenlisten-Hologramme |
 

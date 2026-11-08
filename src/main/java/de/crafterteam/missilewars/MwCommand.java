@@ -69,29 +69,46 @@ public final class MwCommand implements BasicCommand {
             case "map" -> map(sender, args);
             case "holo", "hologram" -> holo(sender, args);
             case "vote", "abstimmen" -> vote(sender, args);
+            case "menu", "menü" -> { if (sender instanceof Player p) de.crafterteam.missilewars.gui.Menus.main(plugin, p); }
+            case "teleporter", "tp" -> {
+                if (sender instanceof Player p) {
+                    Game g = plugin.games().get(p);
+                    if (g != null && g.isSpectator(p)) de.crafterteam.missilewars.gui.Menus.spectator(g, p);
+                    else Msg.send(p, "<bad>Nur für Zuschauer.");
+                }
+            }
+            case "setwaitlobby" -> {
+                if (admin(sender) && sender instanceof Player p) {
+                    plugin.waitingLobby().setLocation(p.getLocation());
+                    Msg.send(p, "<ok>Wartelobby gesetzt. <mut>(Leer lassen in der Config = generierte Lobby)");
+                }
+            }
             default -> help(sender);
         }
         return true;
     }
 
     private void help(CommandSender s) {
-        Msg.send(s, "<white>Befehle:");
-        s.sendMessage(Msg.mm(" <yellow>/mw join [map]</yellow> <gray>– Runde beitreten"));
-        s.sendMessage(Msg.mm(" <yellow>/mw spectate [map]</yellow> <gray>– zuschauen"));
-        s.sendMessage(Msg.mm(" <yellow>/mw team <grün|rot></yellow> <gray>– Team wechseln"));
-        s.sendMessage(Msg.mm(" <yellow>/mw vote [map]</yellow> <gray>– Map-Abstimmung"));
-        s.sendMessage(Msg.mm(" <yellow>/mw leave</yellow> <gray>– Runde verlassen"));
-        s.sendMessage(Msg.mm(" <yellow>/mw list</yellow> <gray>– Maps & Runden"));
-        s.sendMessage(Msg.mm(" <yellow>/mw stats [spieler]</yellow> <gray>– Statistiken"));
-        s.sendMessage(Msg.mm(" <yellow>/mw top [wins|kills|raketen|portale]</yellow> <gray>– Bestenliste"));
-        s.sendMessage(Msg.mm(" <dark_gray>Im Spiel: Chat = Team, <white>@Nachricht</white> = an alle"));
+        Msg.send(s, "<txt>Befehle:");
+        s.sendMessage(Msg.mm(" <acc>/mw join [map]</acc> <mut>– Runde beitreten"));
+        s.sendMessage(Msg.mm(" <acc>/mw spectate [map]</acc> <mut>– zuschauen"));
+        s.sendMessage(Msg.mm(" <acc>/mw team <grün|rot></acc> <mut>– Team wechseln"));
+        s.sendMessage(Msg.mm(" <acc>/mw vote [map]</acc> <mut>– Map-Abstimmung"));
+        s.sendMessage(Msg.mm(" <acc>/mw leave</acc> <mut>– Runde verlassen"));
+        s.sendMessage(Msg.mm(" <acc>/mw menu</acc> <mut>– Spielmenü"));
+        s.sendMessage(Msg.mm(" <acc>/mw teleporter</acc> <mut>– (Zuschauer) zu Spielern teleportieren"));
+        s.sendMessage(Msg.mm(" <acc>/mw list</acc> <mut>– Maps & Runden"));
+        s.sendMessage(Msg.mm(" <acc>/mw stats [spieler]</acc> <mut>– Statistiken"));
+        s.sendMessage(Msg.mm(" <acc>/mw top [wins|kills|raketen|portale]</acc> <mut>– Bestenliste"));
+        s.sendMessage(Msg.mm(" <dim>Im Spiel: Chat = Team, <txt>@Nachricht</txt> = an alle"));
         if (s.hasPermission(ADMIN)) {
-            s.sendMessage(Msg.mm(" <red>/mw start [map]</red> <gray>– sofort starten"));
-            s.sendMessage(Msg.mm(" <red>/mw stop <map></red> <gray>– Runde beenden"));
-            s.sendMessage(Msg.mm(" <red>/mw setlobby</red> <gray>– Lobby-Punkt setzen"));
-            s.sendMessage(Msg.mm(" <red>/mw reload</red> <gray>– Config & Maps neu laden"));
-            s.sendMessage(Msg.mm(" <red>/mw map</red> <gray>– Map-Setup (Hilfe)"));
-            s.sendMessage(Msg.mm(" <red>/mw holo add <stat> | remove | list</red> <gray>– Bestenlisten-Hologramme"));
+            s.sendMessage(Msg.mm(" <bad>/mw start [map]</bad> <mut>– sofort starten"));
+            s.sendMessage(Msg.mm(" <bad>/mw stop <map></bad> <mut>– Runde beenden"));
+            s.sendMessage(Msg.mm(" <bad>/mw setlobby</bad> <mut>– Lobby-Punkt setzen"));
+            s.sendMessage(Msg.mm(" <bad>/mw setwaitlobby</bad> <mut>– eigene Wartelobby setzen"));
+            s.sendMessage(Msg.mm(" <bad>/mw reload</bad> <mut>– Config & Maps neu laden"));
+            s.sendMessage(Msg.mm(" <bad>/mw map</bad> <mut>– Map-Setup (Hilfe)"));
+            s.sendMessage(Msg.mm(" <bad>/mw holo add <stat> | remove | list</bad> <mut>– Bestenlisten-Hologramme"));
         }
     }
 
@@ -99,63 +116,36 @@ public final class MwCommand implements BasicCommand {
 
     private void join(CommandSender s, String mapName, boolean spectate) {
         if (!(s instanceof Player p)) {
-            Msg.send(s, "<red>Nur für Spieler.");
+            Msg.send(s, "<bad>Nur für Spieler.");
             return;
         }
         if (!p.hasPermission("missilewars.play")) {
-            Msg.send(p, "<red>Keine Berechtigung.");
+            Msg.send(p, "<bad>Keine Berechtigung.");
             return;
         }
-        Game current = plugin.games().get(p);
-        if (current != null) {
-            Msg.send(p, "<red>Du bist schon in einer Runde. <gray>/mw leave");
+        if (plugin.games().get(p) != null) {
+            Msg.send(p, "<bad>Du bist schon in einer Runde. <mut>/mw leave");
             return;
         }
-        MapConfig map;
-        if (mapName != null) {
-            map = plugin.maps().get(mapName);
-        } else {
-            map = null;
-            for (Game g : plugin.games().all()) {
-                if (g.state() == Game.State.WAITING || g.state() == Game.State.COUNTDOWN) {
-                    map = g.map();
-                    break;
-                }
-            }
-            if (map == null) map = plugin.maps().get(plugin.getConfig().getString("default-map", "standard"));
-            if (map == null) {
-                for (MapConfig m : plugin.maps().all()) if (m.ready() && m.complete()) { map = m; break; }
-            }
-        }
-        if (map == null) {
-            Msg.send(p, "<red>Map nicht gefunden. <gray>/mw list");
-            return;
-        }
-        try {
-            Game g = plugin.games().getOrCreate(map);
-            if (spectate) g.spectate(p);
-            else g.join(p);
-        } catch (GameException e) {
-            Msg.send(p, "<red>" + Msg.esc(e.getMessage()));
-        }
+        plugin.games().quickJoin(p, mapName, spectate);
     }
 
     private void leave(CommandSender s) {
         if (!(s instanceof Player p)) return;
         Game g = plugin.games().get(p);
         if (g == null) {
-            Msg.send(p, "<red>Du bist in keiner Runde.");
+            Msg.send(p, "<bad>Du bist in keiner Runde.");
             return;
         }
         g.leave(p, true);
-        Msg.send(p, "Du hast die Runde verlassen.");
+        if (!plugin.serverMode().handleLeave(p)) Msg.send(p, "Du hast die Runde verlassen.");
     }
 
     private void vote(CommandSender s, String[] args) {
         if (!(s instanceof Player p)) return;
         Game g = plugin.games().get(p);
         if (g == null) {
-            Msg.send(p, "<red>Du bist in keiner Runde.");
+            Msg.send(p, "<bad>Du bist in keiner Runde.");
             return;
         }
         if (args.length > 1) g.vote(p, args[1].toLowerCase(Locale.ROOT));
@@ -166,26 +156,26 @@ public final class MwCommand implements BasicCommand {
         if (!(s instanceof Player p)) return;
         Game g = plugin.games().get(p);
         if (g == null) {
-            Msg.send(p, "<red>Du bist in keiner Runde.");
+            Msg.send(p, "<bad>Du bist in keiner Runde.");
             return;
         }
         Team t = args.length > 1 ? Team.parse(args[1]) : null;
         if (t == null) {
-            Msg.send(p, "<red>/mw team <grün|rot>");
+            Msg.send(p, "<bad>/mw team <grün|rot>");
             return;
         }
         g.changeTeam(p, t);
     }
 
     private void list(CommandSender s) {
-        Msg.send(s, "<white>Maps:");
+        Msg.send(s, "<txt>Maps:");
         for (MapConfig m : plugin.maps().all()) {
             Game g = plugin.games().get(m.name());
             String status = g != null
-                    ? "<green>" + stateName(g.state()) + " <dark_gray>(" + g.playerCount() + " Spieler)"
-                    : (m.ready() && m.complete() ? "<gray>frei" : "<red>im Setup");
+                    ? "<ok>" + stateName(g.state()) + " <dim>(" + g.playerCount() + " Spieler)"
+                    : (m.ready() && m.complete() ? "<mut>frei" : "<bad>im Setup");
             String type = m.type() == MapConfig.Type.GENERATED ? "generiert" : "Welt";
-            s.sendMessage(Msg.mm(" <yellow>" + m.name() + " <dark_gray>[" + type + "] " + status));
+            s.sendMessage(Msg.mm(" <acc>" + m.name() + " <dim>[" + type + "] " + status));
         }
     }
 
@@ -197,41 +187,41 @@ public final class MwCommand implements BasicCommand {
         } else if (s instanceof Player p) {
             e = plugin.stats().get(p.getUniqueId());
         } else {
-            Msg.send(s, "<red>/mw stats <spieler>");
+            Msg.send(s, "<bad>/mw stats <spieler>");
             return;
         }
         if (e == null) {
-            Msg.send(s, "<red>Keine Statistiken gefunden.");
+            Msg.send(s, "<bad>Keine Statistiken gefunden.");
             return;
         }
         int games = e.get(Stat.GAMES), wins = e.get(Stat.WINS), kills = e.get(Stat.KILLS), deaths = e.get(Stat.DEATHS);
         String kd = String.format(Locale.ROOT, "%.2f", deaths == 0 ? kills : kills / (double) deaths);
         String wr = games == 0 ? "0" : String.valueOf(Math.round(wins * 100.0 / games));
-        Msg.send(s, "<white>Statistiken von <yellow>" + Msg.esc(e.name));
-        s.sendMessage(Msg.mm(" <gray>Runden: <white>" + games + " <dark_gray>| <gray>Siege: <green>" + wins
-                + " <dark_gray>| <gray>Niederlagen: <red>" + e.get(Stat.LOSSES) + " <dark_gray>(" + wr + "%)"));
-        s.sendMessage(Msg.mm(" <gray>Kills: <green>" + kills + " <dark_gray>| <gray>Tode: <red>" + deaths
-                + " <dark_gray>| <gray>K/D: <white>" + kd));
-        s.sendMessage(Msg.mm(" <gray>Raketen: <aqua>" + e.get(Stat.MISSILES)
-                + " <dark_gray>| <gray>Portale zerstört: <gold>" + e.get(Stat.PORTALS)));
+        Msg.send(s, "<txt>Statistiken von <acc>" + Msg.esc(e.name));
+        s.sendMessage(Msg.mm(" <mut>Runden: <txt>" + games + " <dim>| <mut>Siege: <ok>" + wins
+                + " <dim>| <mut>Niederlagen: <bad>" + e.get(Stat.LOSSES) + " <dim>(" + wr + "%)"));
+        s.sendMessage(Msg.mm(" <mut>Kills: <ok>" + kills + " <dim>| <mut>Tode: <bad>" + deaths
+                + " <dim>| <mut>K/D: <txt>" + kd));
+        s.sendMessage(Msg.mm(" <mut>Raketen: <info>" + e.get(Stat.MISSILES)
+                + " <dim>| <mut>Portale zerstört: <pri>" + e.get(Stat.PORTALS)));
     }
 
     private void top(CommandSender s, String[] args) {
         Stat stat = args.length > 1 ? Stat.parse(args[1]) : Stat.WINS;
         if (stat == null) {
-            Msg.send(s, "<red>/mw top <wins|kills|raketen|portale|runden|tode>");
+            Msg.send(s, "<bad>/mw top <wins|kills|raketen|portale|runden|tode>");
             return;
         }
         List<StatsManager.Entry> top = plugin.stats().top(stat, 10);
-        Msg.send(s, "<white>Top 10 – <yellow>" + stat.label());
+        Msg.send(s, "<txt>Top 10 – <acc>" + stat.label());
         if (top.isEmpty()) {
-            s.sendMessage(Msg.mm(" <gray>Noch keine Einträge."));
+            s.sendMessage(Msg.mm(" <mut>Noch keine Einträge."));
             return;
         }
         for (int i = 0; i < top.size(); i++) {
-            String color = i == 0 ? "<gold>" : i == 1 ? "<gray>" : i == 2 ? "<#cd7f32>" : "<dark_gray>";
-            s.sendMessage(Msg.mm(" " + color + (i + 1) + ". <white>" + Msg.esc(top.get(i).name)
-                    + " <dark_gray>» <yellow>" + top.get(i).get(stat)));
+            String color = i == 0 ? "<pri>" : i == 1 ? "<mut>" : i == 2 ? "<#cd7f32>" : "<dim>";
+            s.sendMessage(Msg.mm(" " + color + (i + 1) + ". <txt>" + Msg.esc(top.get(i).name)
+                    + " <dim>» <acc>" + top.get(i).get(stat)));
         }
     }
 
@@ -242,23 +232,23 @@ public final class MwCommand implements BasicCommand {
             case "add" -> {
                 if (!(s instanceof Player p)) return;
                 Stat stat = args.length > 2 ? Stat.parse(args[2]) : Stat.WINS;
-                if (stat == null) { Msg.send(s, "<red>/mw holo add <wins|kills|raketen|portale|runden|tode>"); return; }
+                if (stat == null) { Msg.send(s, "<bad>/mw holo add <wins|kills|raketen|portale|runden|tode>"); return; }
                 String id = plugin.holograms().add(p.getLocation(), stat);
-                Msg.send(s, "<green>Hologramm " + id + " (" + stat.label() + ") erstellt.");
+                Msg.send(s, "<ok>Hologramm " + id + " (" + stat.label() + ") erstellt.");
             }
             case "remove" -> {
                 if (!(s instanceof Player p)) return;
                 String id = plugin.holograms().removeNear(p.getLocation(), 6);
-                Msg.send(s, id == null ? "<red>Kein Hologramm in 6 Blöcken Nähe." : "<green>Hologramm " + id + " entfernt.");
+                Msg.send(s, id == null ? "<bad>Kein Hologramm in 6 Blöcken Nähe." : "<ok>Hologramm " + id + " entfernt.");
             }
             case "list" -> {
-                Msg.send(s, "<white>Hologramme:");
+                Msg.send(s, "<txt>Hologramme:");
                 for (var h : plugin.holograms().all()) {
-                    s.sendMessage(Msg.mm(" <yellow>" + h.id() + " <gray>" + h.stat().label() + " <dark_gray>@ "
+                    s.sendMessage(Msg.mm(" <acc>" + h.id() + " <mut>" + h.stat().label() + " <dim>@ "
                             + Msg.esc(h.world()) + " " + (int) h.x() + " " + (int) h.y() + " " + (int) h.z()));
                 }
             }
-            default -> Msg.send(s, "<red>/mw holo add <stat> | remove | list");
+            default -> Msg.send(s, "<bad>/mw holo add <stat> | remove | list");
         }
     }
 
@@ -275,7 +265,7 @@ public final class MwCommand implements BasicCommand {
 
     private boolean admin(CommandSender s) {
         if (s.hasPermission(ADMIN)) return true;
-        Msg.send(s, "<red>Keine Berechtigung.");
+        Msg.send(s, "<bad>Keine Berechtigung.");
         return false;
     }
 
@@ -289,50 +279,50 @@ public final class MwCommand implements BasicCommand {
         if (!admin(s)) return;
         Game g = targetGame(s, args, 1);
         if (g == null) {
-            Msg.send(s, "<red>Keine passende Runde gefunden.");
+            Msg.send(s, "<bad>Keine passende Runde gefunden.");
             return;
         }
-        Msg.send(s, g.forceStart() ? "<green>Runde startet in 5 Sekunden." : "<red>Runde kann nicht gestartet werden.");
+        Msg.send(s, g.forceStart() ? "<ok>Runde startet in 5 Sekunden." : "<bad>Runde kann nicht gestartet werden.");
     }
 
     private void stop(CommandSender s, String[] args) {
         if (!admin(s)) return;
         Game g = targetGame(s, args, 1);
         if (g == null) {
-            Msg.send(s, "<red>Keine passende Runde gefunden.");
+            Msg.send(s, "<bad>Keine passende Runde gefunden.");
             return;
         }
-        g.broadcast("<red>Die Runde wurde von einem Admin beendet.");
+        g.broadcast("<bad>Die Runde wurde von einem Admin beendet.");
         g.shutdown();
-        Msg.send(s, "<green>Runde beendet.");
+        Msg.send(s, "<ok>Runde beendet.");
     }
 
     private void setLobby(CommandSender s) {
         if (!admin(s) || !(s instanceof Player p)) return;
         plugin.setLobby(p.getLocation());
-        Msg.send(p, "<green>Lobby gesetzt.");
+        Msg.send(p, "<ok>Lobby gesetzt.");
     }
 
     private void reload(CommandSender s) {
         if (!admin(s)) return;
         plugin.reloadAll();
-        Msg.send(s, "<green>Config & Maps neu geladen.");
+        Msg.send(s, "<ok>Config & Maps neu geladen.");
     }
 
     // ── Map-Setup ────────────────────────────────────────────────────
 
     private void mapHelp(CommandSender s) {
-        Msg.send(s, "<white>Map-Setup:");
-        s.sendMessage(Msg.mm(" <yellow>/mw map generate <name> [abstand]</yellow> <gray>– generierte Arena (keine Welt nötig)"));
-        s.sendMessage(Msg.mm(" <yellow>/mw map create <name> [arena|leer]</yellow> <gray>– neue Welt zum Bauen"));
-        s.sendMessage(Msg.mm(" <yellow>/mw map import <name> <welt></yellow> <gray>– vorhandene Welt nutzen"));
-        s.sendMessage(Msg.mm(" <yellow>/mw map setspawn <name> <grün|rot></yellow> <gray>– Spawn = deine Position"));
-        s.sendMessage(Msg.mm(" <yellow>/mw map setportal <name> <grün|rot></yellow> <gray>– Portal anschauen"));
-        s.sendMessage(Msg.mm(" <yellow>/mw map setdeathy <name> <y></yellow> <gray>– Void-Höhe"));
-        s.sendMessage(Msg.mm(" <yellow>/mw map tp <name></yellow> <gray>– in die Template-Welt"));
-        s.sendMessage(Msg.mm(" <yellow>/mw map finish <name></yellow> <gray>– fertig, Welt entladen"));
-        s.sendMessage(Msg.mm(" <yellow>/mw map info|delete <name>"));
-        s.sendMessage(Msg.mm(" <dark_gray>Teams stehen sich auf der Z-Achse gegenüber."));
+        Msg.send(s, "<txt>Map-Setup:");
+        s.sendMessage(Msg.mm(" <acc>/mw map generate <name> [abstand]</acc> <mut>– generierte Arena (keine Welt nötig)"));
+        s.sendMessage(Msg.mm(" <acc>/mw map create <name> [arena|leer]</acc> <mut>– neue Welt zum Bauen"));
+        s.sendMessage(Msg.mm(" <acc>/mw map import <name> <welt></acc> <mut>– vorhandene Welt nutzen"));
+        s.sendMessage(Msg.mm(" <acc>/mw map setspawn <name> <grün|rot></acc> <mut>– Spawn = deine Position"));
+        s.sendMessage(Msg.mm(" <acc>/mw map setportal <name> <grün|rot></acc> <mut>– Portal anschauen"));
+        s.sendMessage(Msg.mm(" <acc>/mw map setdeathy <name> <y></acc> <mut>– Void-Höhe"));
+        s.sendMessage(Msg.mm(" <acc>/mw map tp <name></acc> <mut>– in die Template-Welt"));
+        s.sendMessage(Msg.mm(" <acc>/mw map finish <name></acc> <mut>– fertig, Welt entladen"));
+        s.sendMessage(Msg.mm(" <acc>/mw map info|delete <name>"));
+        s.sendMessage(Msg.mm(" <dim>Teams stehen sich auf der Z-Achse gegenüber."));
     }
 
     private void map(CommandSender s, String[] args) {
@@ -351,28 +341,28 @@ public final class MwCommand implements BasicCommand {
 
         switch (action) {
             case "generate" -> {
-                if (m != null) { Msg.send(s, "<red>Map existiert schon."); return; }
-                if (!MapManager.validName(name)) { Msg.send(s, "<red>Name: nur a-z, 0-9, _ und -"); return; }
+                if (m != null) { Msg.send(s, "<bad>Map existiert schon."); return; }
+                if (!MapManager.validName(name)) { Msg.send(s, "<bad>Name: nur a-z, 0-9, _ und -"); return; }
                 int dist = args.length > 3 ? parseInt(args[3], 60) : plugin.getConfig().getInt("generator.distance", 60);
                 dist = Math.max(25, Math.min(200, dist));
                 MapConfig nm = new MapConfig(name, MapConfig.Type.GENERATED);
                 ArenaGenerator.applyLayout(nm, dist);
                 nm.ready(true);
                 plugin.maps().add(nm);
-                Msg.send(s, "<green>Generierte Map '" + name + "' angelegt <gray>(Abstand " + dist + "). /mw join " + name);
+                Msg.send(s, "<ok>Generierte Map '" + name + "' angelegt <mut>(Abstand " + dist + "). /mw join " + name);
             }
             case "create" -> {
                 if (!(s instanceof Player p)) return;
-                if (m != null) { Msg.send(s, "<red>Map existiert schon."); return; }
-                if (!MapManager.validName(name)) { Msg.send(s, "<red>Name: nur a-z, 0-9, _ und -"); return; }
+                if (m != null) { Msg.send(s, "<bad>Map existiert schon."); return; }
+                if (!MapManager.validName(name)) { Msg.send(s, "<bad>Name: nur a-z, 0-9, _ und -"); return; }
                 boolean arena = args.length <= 3 || !args[3].equalsIgnoreCase("leer");
                 String worldName = MapManager.TEMPLATE_PREFIX + name;
                 if (MapManager.worldFolder(worldName).exists() || Bukkit.getWorld(worldName) != null) {
-                    Msg.send(s, "<red>Welt " + worldName + " existiert schon – nimm /mw map import.");
+                    Msg.send(s, "<bad>Welt " + worldName + " existiert schon – nimm /mw map import.");
                     return;
                 }
                 World w = new WorldCreator(worldName).generator(new VoidGenerator()).createWorld();
-                if (w == null) { Msg.send(s, "<red>Welt konnte nicht erstellt werden."); return; }
+                if (w == null) { Msg.send(s, "<bad>Welt konnte nicht erstellt werden."); return; }
                 MapConfig nm = new MapConfig(name, MapConfig.Type.WORLD);
                 nm.templateWorld(worldName);
                 if (arena) {
@@ -387,28 +377,28 @@ public final class MwCommand implements BasicCommand {
                 plugin.maps().add(nm);
                 p.teleport(arena ? nm.spawn(Team.GREEN).toLocation(w) : new Location(w, 0.5, 64, 0.5));
                 p.setGameMode(GameMode.CREATIVE);
-                Msg.send(p, "<green>Template-Welt erstellt." + (arena
-                        ? " <gray>Arena ist vorgebaut – Spawns & Portale sind schon gesetzt. Umbauen und dann <yellow>/mw map finish " + name
-                        : " <gray>Bauen, dann Spawns/Portale setzen und <yellow>/mw map finish " + name));
+                Msg.send(p, "<ok>Template-Welt erstellt." + (arena
+                        ? " <mut>Arena ist vorgebaut – Spawns & Portale sind schon gesetzt. Umbauen und dann <acc>/mw map finish " + name
+                        : " <mut>Bauen, dann Spawns/Portale setzen und <acc>/mw map finish " + name));
             }
             case "import" -> {
-                if (m != null) { Msg.send(s, "<red>Map existiert schon."); return; }
-                if (!MapManager.validName(name)) { Msg.send(s, "<red>Name: nur a-z, 0-9, _ und -"); return; }
-                if (args.length < 4) { Msg.send(s, "<red>/mw map import <name> <weltordner>"); return; }
+                if (m != null) { Msg.send(s, "<bad>Map existiert schon."); return; }
+                if (!MapManager.validName(name)) { Msg.send(s, "<bad>Name: nur a-z, 0-9, _ und -"); return; }
+                if (args.length < 4) { Msg.send(s, "<bad>/mw map import <name> <weltordner>"); return; }
                 String worldName = args[3];
                 if (Bukkit.getWorlds().getFirst().getName().equals(worldName)) {
-                    Msg.send(s, "<red>Die Hauptwelt geht nicht – kopiere sie in einen eigenen Ordner.");
+                    Msg.send(s, "<bad>Die Hauptwelt geht nicht – kopiere sie in einen eigenen Ordner.");
                     return;
                 }
                 World w = Bukkit.getWorld(worldName);
                 if (w == null) {
                     if (!MapManager.worldFolder(worldName).isDirectory()) {
-                        Msg.send(s, "<red>Weltordner '" + Msg.esc(worldName) + "' nicht gefunden.");
+                        Msg.send(s, "<bad>Weltordner '" + Msg.esc(worldName) + "' nicht gefunden.");
                         return;
                     }
                     w = new WorldCreator(worldName).generator(new VoidGenerator()).createWorld();
                 }
-                if (w == null) { Msg.send(s, "<red>Welt konnte nicht geladen werden."); return; }
+                if (w == null) { Msg.send(s, "<bad>Welt konnte nicht geladen werden."); return; }
                 MapConfig nm = new MapConfig(name, MapConfig.Type.WORLD);
                 nm.templateWorld(w.getName());
                 nm.deathY(w.getMinHeight() + 10);
@@ -417,14 +407,14 @@ public final class MwCommand implements BasicCommand {
                     p.teleport(w.getSpawnLocation());
                     p.setGameMode(GameMode.CREATIVE);
                 }
-                Msg.send(s, "<green>Welt importiert. <gray>Jetzt Spawns & Portale setzen, dann /mw map finish " + name);
+                Msg.send(s, "<ok>Welt importiert. <mut>Jetzt Spawns & Portale setzen, dann /mw map finish " + name);
             }
             case "setspawn" -> {
                 if (!(s instanceof Player p) || !checkWorldMap(s, m)) return;
                 Team t = args.length > 3 ? Team.parse(args[3]) : null;
-                if (t == null) { Msg.send(s, "<red>/mw map setspawn " + name + " <grün|rot>"); return; }
+                if (t == null) { Msg.send(s, "<bad>/mw map setspawn " + name + " <grün|rot>"); return; }
                 if (!p.getWorld().getName().equals(m.templateWorld())) {
-                    Msg.send(s, "<red>Du musst in der Template-Welt sein: /mw map tp " + name);
+                    Msg.send(s, "<bad>Du musst in der Template-Welt sein: /mw map tp " + name);
                     return;
                 }
                 Location l = p.getLocation();
@@ -433,57 +423,57 @@ public final class MwCommand implements BasicCommand {
                 m.spawn(t, MapConfig.Spawn.of(l));
                 m.ready(false);
                 plugin.maps().save(m);
-                Msg.send(s, "<green>Spawn für Team " + t.colored() + " <green>gesetzt.");
+                Msg.send(s, "<ok>Spawn für Team " + t.colored() + " <ok>gesetzt.");
             }
             case "setportal" -> {
                 if (!(s instanceof Player p) || !checkWorldMap(s, m)) return;
                 Team t = args.length > 3 ? Team.parse(args[3]) : null;
-                if (t == null) { Msg.send(s, "<red>/mw map setportal " + name + " <grün|rot>"); return; }
+                if (t == null) { Msg.send(s, "<bad>/mw map setportal " + name + " <grün|rot>"); return; }
                 Block target = p.getTargetBlockExact(30);
                 if (target == null || target.getType() != Material.NETHER_PORTAL) {
-                    Msg.send(s, "<red>Schau auf einen Netherportal-Block (max. 30 Blöcke).");
+                    Msg.send(s, "<bad>Schau auf einen Netherportal-Block (max. 30 Blöcke).");
                     return;
                 }
                 MapConfig.Box box = floodPortal(target);
-                if (box == null) { Msg.send(s, "<red>Portal ist zu groß (max. 5000 Blöcke)."); return; }
+                if (box == null) { Msg.send(s, "<bad>Portal ist zu groß (max. 5000 Blöcke)."); return; }
                 m.portal(t, box);
                 m.ready(false);
                 plugin.maps().save(m);
                 int count = (box.maxX() - box.minX() + 1) * (box.maxY() - box.minY() + 1) * (box.maxZ() - box.minZ() + 1);
-                Msg.send(s, "<green>Portal für Team " + t.colored() + " <green>gesetzt <gray>(~" + count + " Blöcke).");
+                Msg.send(s, "<ok>Portal für Team " + t.colored() + " <ok>gesetzt <mut>(~" + count + " Blöcke).");
                 if (box.maxZ() != box.minZ()) {
-                    Msg.send(s, "<yellow>Hinweis: Das Portal sollte quer zur Z-Achse stehen (Teams stehen sich auf Z gegenüber).");
+                    Msg.send(s, "<acc>Hinweis: Das Portal sollte quer zur Z-Achse stehen (Teams stehen sich auf Z gegenüber).");
                 }
             }
             case "setdeathy" -> {
                 if (!checkWorldMap(s, m)) return;
-                if (args.length < 4) { Msg.send(s, "<red>/mw map setdeathy " + name + " <y>"); return; }
+                if (args.length < 4) { Msg.send(s, "<bad>/mw map setdeathy " + name + " <y>"); return; }
                 m.deathY(parseInt(args[3], m.deathY()));
                 plugin.maps().save(m);
-                Msg.send(s, "<green>Void-Höhe: " + m.deathY());
+                Msg.send(s, "<ok>Void-Höhe: " + m.deathY());
             }
             case "tp" -> {
                 if (!(s instanceof Player p) || !checkWorldMap(s, m)) return;
                 World w = Bukkit.getWorld(m.templateWorld());
                 if (w == null) {
                     if (plugin.games().get(name) != null) {
-                        Msg.send(s, "<red>Auf der Map läuft gerade eine Runde.");
+                        Msg.send(s, "<bad>Auf der Map läuft gerade eine Runde.");
                         return;
                     }
                     w = new WorldCreator(m.templateWorld()).generator(new VoidGenerator()).createWorld();
                 }
-                if (w == null) { Msg.send(s, "<red>Welt konnte nicht geladen werden."); return; }
+                if (w == null) { Msg.send(s, "<bad>Welt konnte nicht geladen werden."); return; }
                 m.ready(false);
                 plugin.maps().save(m);
                 MapConfig.Spawn sp = m.spawn(Team.GREEN);
                 p.teleport(sp != null ? sp.toLocation(w) : w.getSpawnLocation());
                 p.setGameMode(GameMode.CREATIVE);
-                Msg.send(p, "<green>Setup-Modus. <gray>Danach /mw map finish " + name);
+                Msg.send(p, "<ok>Setup-Modus. <mut>Danach /mw map finish " + name);
             }
             case "finish" -> {
                 if (!checkWorldMap(s, m)) return;
                 if (!m.complete()) {
-                    Msg.send(s, "<red>Es fehlen noch: " + missing(m));
+                    Msg.send(s, "<bad>Es fehlen noch: " + missing(m));
                     return;
                 }
                 World w = Bukkit.getWorld(m.templateWorld());
@@ -495,34 +485,34 @@ public final class MwCommand implements BasicCommand {
                         pl.setGameMode(Bukkit.getDefaultGameMode());
                     }
                     if (!Bukkit.unloadWorld(w, true)) {
-                        Msg.send(s, "<red>Welt konnte nicht entladen werden.");
+                        Msg.send(s, "<bad>Welt konnte nicht entladen werden.");
                         return;
                     }
                 }
                 m.ready(true);
                 plugin.maps().save(m);
-                Msg.send(s, "<green>Map '" + name + "' ist fertig! <gray>/mw join " + name);
+                Msg.send(s, "<ok>Map '" + name + "' ist fertig! <mut>/mw join " + name);
             }
             case "info" -> {
-                if (m == null) { Msg.send(s, "<red>Map nicht gefunden."); return; }
-                Msg.send(s, "<white>Map " + name + " <dark_gray>[" + m.type() + "]");
-                if (m.type() == MapConfig.Type.WORLD) s.sendMessage(Msg.mm(" <gray>Welt: <white>" + Msg.esc(String.valueOf(m.templateWorld()))));
-                else s.sendMessage(Msg.mm(" <gray>Abstand: <white>" + m.distance()));
-                s.sendMessage(Msg.mm(" <gray>Fertig: " + (m.ready() && m.complete() ? "<green>ja" : "<red>nein – " + missing(m))));
-                s.sendMessage(Msg.mm(" <gray>Void-Höhe: <white>" + m.deathY()));
+                if (m == null) { Msg.send(s, "<bad>Map nicht gefunden."); return; }
+                Msg.send(s, "<txt>Map " + name + " <dim>[" + m.type() + "]");
+                if (m.type() == MapConfig.Type.WORLD) s.sendMessage(Msg.mm(" <mut>Welt: <txt>" + Msg.esc(String.valueOf(m.templateWorld()))));
+                else s.sendMessage(Msg.mm(" <mut>Abstand: <txt>" + m.distance()));
+                s.sendMessage(Msg.mm(" <mut>Fertig: " + (m.ready() && m.complete() ? "<ok>ja" : "<bad>nein – " + missing(m))));
+                s.sendMessage(Msg.mm(" <mut>Void-Höhe: <txt>" + m.deathY()));
                 for (Team t : Team.values()) {
                     MapConfig.Spawn sp = m.spawn(t);
                     MapConfig.Box b = m.portal(t);
-                    s.sendMessage(Msg.mm(" " + t.colored() + "<gray>: Spawn " + (sp == null ? "<red>fehlt" : "<white>" + (int) sp.x() + " " + (int) sp.y() + " " + (int) sp.z())
-                            + "<gray>, Portal " + (b == null ? "<red>fehlt" : "<white>" + b.minX() + " " + b.minY() + " " + b.minZ() + " → " + b.maxX() + " " + b.maxY() + " " + b.maxZ())));
+                    s.sendMessage(Msg.mm(" " + t.colored() + "<mut>: Spawn " + (sp == null ? "<bad>fehlt" : "<txt>" + (int) sp.x() + " " + (int) sp.y() + " " + (int) sp.z())
+                            + "<mut>, Portal " + (b == null ? "<bad>fehlt" : "<txt>" + b.minX() + " " + b.minY() + " " + b.minZ() + " → " + b.maxX() + " " + b.maxY() + " " + b.maxZ())));
                 }
             }
             case "delete" -> {
-                if (m == null) { Msg.send(s, "<red>Map nicht gefunden."); return; }
+                if (m == null) { Msg.send(s, "<bad>Map nicht gefunden."); return; }
                 Game g = plugin.games().get(name);
                 if (g != null) g.shutdown();
                 plugin.maps().delete(m);
-                Msg.send(s, "<green>Map '" + name + "' gelöscht. <gray>(Ein Template-Weltordner bleibt erhalten.)");
+                Msg.send(s, "<ok>Map '" + name + "' gelöscht. <mut>(Ein Template-Weltordner bleibt erhalten.)");
             }
             default -> mapHelp(s);
         }
@@ -530,11 +520,11 @@ public final class MwCommand implements BasicCommand {
 
     private boolean checkWorldMap(CommandSender s, MapConfig m) {
         if (m == null) {
-            Msg.send(s, "<red>Map nicht gefunden.");
+            Msg.send(s, "<bad>Map nicht gefunden.");
             return false;
         }
         if (m.type() != MapConfig.Type.WORLD) {
-            Msg.send(s, "<red>Das geht nur bei Welt-Maps. Generierte Maps: /mw map create <name> arena");
+            Msg.send(s, "<bad>Das geht nur bei Welt-Maps. Generierte Maps: /mw map create <name> arena");
             return false;
         }
         return true;
@@ -588,8 +578,8 @@ public final class MwCommand implements BasicCommand {
         List<String> out = new ArrayList<>();
         boolean admin = s.hasPermission(ADMIN);
         if (args.length == 1) {
-            out.addAll(List.of("join", "spectate", "leave", "team", "vote", "list", "stats", "top"));
-            if (admin) out.addAll(List.of("start", "stop", "setlobby", "reload", "map", "holo"));
+            out.addAll(List.of("join", "spectate", "leave", "team", "vote", "menu", "teleporter", "list", "stats", "top"));
+            if (admin) out.addAll(List.of("start", "stop", "setlobby", "setwaitlobby", "reload", "map", "holo"));
         } else if (args.length == 2) {
             switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "join", "spectate", "start", "stop", "vote" -> plugin.maps().all().forEach(m -> out.add(m.name()));

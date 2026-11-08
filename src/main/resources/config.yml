@@ -2,6 +2,35 @@
 #  MissileWars – Konfiguration
 # ─────────────────────────────────────────────
 
+# ── Spielmodus-Server (Auto-Join) ───────────────────────────────
+# Für einen reinen MissileWars-Server hinter BungeeCord/Velocity:
+# Spieler landen beim Joinen automatisch in einer Runde.
+server-mode:
+  enabled: false
+  map: ''                 # leer = default-map / Abstimmung
+  after-game: requeue     # requeue = direkt nächste Runde, lobby-server = zurück auf den Lobby-Server
+  motd: true              # Rundenstatus in der Serverliste (für Server-Selector)
+
+# ── BungeeCord / Velocity ───────────────────────────────────────
+bungee:
+  enabled: false
+  lobby-server: lobby     # Servername aus der Proxy-Config ("Verlassen" schickt dorthin)
+
+# ── Wartelobby ──────────────────────────────────────────────────
+waiting-lobby:
+  enabled: true
+  location: ''            # leer = generierte Lobby-Insel, sonst /mw setwaitlobby
+
+# ── Nametags & Tab-Liste (LuckPerms-Präfixe, falls installiert) ─
+nametags:
+  enabled: true
+tablist:
+  enabled: true
+  server-name: ''         # z. B. "play.deinserver.de" im Tab-Footer
+
+killstreaks:
+  enabled: true           # 3/5/7/10 Kills in Folge: Ansage + Bonus-Items
+
 # Wohin Spieler nach der Runde kommen. Mit /mw setlobby setzen.
 # Leer = zurück an den Ort, von dem sie /mw join gemacht haben.
 lobby: ''

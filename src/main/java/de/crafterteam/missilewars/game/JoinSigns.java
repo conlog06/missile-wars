@@ -92,22 +92,22 @@ public final class JoinSigns {
         String status;
         String players;
         if (m == null) {
-            status = "<dark_red>Map fehlt";
+            status = "<bad>Map fehlt";
             players = "";
         } else if (g == null) {
-            status = m.ready() && m.complete() ? "<green>Beitreten" : "<red>Setup";
-            players = "<dark_gray>0 Spieler";
+            status = m.ready() && m.complete() ? "<ok>Beitreten" : "<bad>Setup";
+            players = "<dim>0 Spieler";
         } else {
             status = switch (g.state()) {
-                case WAITING -> "<green>Wartet";
-                case COUNTDOWN -> "<yellow>Startet";
-                case RUNNING -> "<gold>Läuft";
-                case ENDING -> "<red>Endet";
+                case WAITING -> "<ok>Wartet";
+                case COUNTDOWN -> "<acc>Startet";
+                case RUNNING -> "<pri>Läuft";
+                case ENDING -> "<bad>Endet";
             };
-            players = "<dark_gray>" + g.playerCount() + "/" + plugin.getConfig().getInt("players.max", 16) + " Spieler";
+            players = "<dim>" + g.playerCount() + "/" + plugin.getConfig().getInt("players.max", 16) + " Spieler";
         }
-        side.line(0, Msg.mm("<red><bold>Missile</bold><black><bold>Wars"));
-        side.line(1, Msg.mm("<black>" + Msg.esc(mapName)));
+        side.line(0, Msg.mm("<logo>"));
+        side.line(1, Msg.mm("<dim>" + Msg.esc(mapName)));
         side.line(2, Msg.mm(status));
         side.line(3, Msg.mm(players));
     }

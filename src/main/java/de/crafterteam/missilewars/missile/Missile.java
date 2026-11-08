@@ -204,7 +204,9 @@ public final class Missile {
             minY = Math.min(minY, p.y()); maxY = Math.max(maxY, p.y());
             minZ = Math.min(minZ, p.z()); maxZ = Math.max(maxZ, p.z());
         }
-        BoundingBox box = new BoundingBox(minX - 0.3, minY, minZ, maxX + 1.3, maxY + 2.2, maxZ + 1);
+        // Mitfahr-Raketen nehmen Spieler oben drauf mit, alle anderen schieben nur, wer im Weg steht
+        double top = type.rideable() ? maxY + 2.2 : maxY + 0.99;
+        BoundingBox box = new BoundingBox(minX - 0.3, minY, minZ, maxX + 1.3, top, maxZ + 1);
         for (Entity e : world.getNearbyEntities(box, en -> en instanceof Player)) {
             Player p = (Player) e;
             if (p.getGameMode() == org.bukkit.GameMode.SPECTATOR) continue;

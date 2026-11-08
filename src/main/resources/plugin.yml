@@ -3,6 +3,7 @@ version: ${project.version}
 main: de.crafterteam.missilewars.MissileWarsPlugin
 api-version: '26.3'
 author: Constantin
+softdepend: [LuckPerms]
 description: Missile Wars für Paper 26.3 – Raketen, Schilde, Feuerbälle, generierte & eigene Maps
 permissions:
   missilewars.play:

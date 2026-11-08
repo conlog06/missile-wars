@@ -129,13 +129,13 @@ public final class LeaderboardHolograms {
     }
 
     private String render(Stat stat) {
-        StringBuilder sb = new StringBuilder("<red><bold>Missile</bold><white><bold>Wars</bold>\n<yellow>Top 10 – " + stat.label() + "\n");
+        StringBuilder sb = new StringBuilder("<logo>\n<acc>Top 10 – " + stat.label() + "\n");
         List<StatsManager.Entry> top = plugin.stats().top(stat, 10);
-        if (top.isEmpty()) sb.append("<gray>Noch keine Einträge");
+        if (top.isEmpty()) sb.append("<mut>Noch keine Einträge");
         for (int i = 0; i < top.size(); i++) {
-            String c = i == 0 ? "<gold>" : i == 1 ? "<gray>" : i == 2 ? "<#cd7f32>" : "<dark_gray>";
-            sb.append("\n").append(c).append(i + 1).append(". <white>").append(Msg.esc(top.get(i).name))
-                    .append(" <dark_gray>» <yellow>").append(top.get(i).get(stat));
+            String c = i == 0 ? "<pri>" : i == 1 ? "<mut>" : i == 2 ? "<#cd7f32>" : "<dim>";
+            sb.append("\n").append(c).append(i + 1).append(". <txt>").append(Msg.esc(top.get(i).name))
+                    .append(" <dim>» <acc>").append(top.get(i).get(stat));
         }
         return sb.toString();
     }

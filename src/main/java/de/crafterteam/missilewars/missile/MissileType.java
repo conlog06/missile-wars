@@ -15,19 +15,19 @@ import java.util.Locale;
  */
 public enum MissileType {
 
-    TOMAHAWK("tomahawk", "Tomahawk", Material.CREEPER_SPAWN_EGG, false, -1,
+    TOMAHAWK("tomahawk", "Tomahawk", Material.CREEPER_SPAWN_EGG, false, -1, false,
             "Der Allrounder. Schnell, solide Ladung."),
-    JUGGERNAUT("juggernaut", "Juggernaut", Material.GHAST_SPAWN_EGG, false, -1,
+    JUGGERNAUT("juggernaut", "Juggernaut", Material.GHAST_SPAWN_EGG, false, -1, true,
             "Langsam, aber riesige Sprengladung."),
-    SHIELDBUSTER("shieldbuster", "Shieldbuster", Material.WITCH_SPAWN_EGG, true, -1,
+    SHIELDBUSTER("shieldbuster", "Shieldbuster", Material.WITCH_SPAWN_EGG, true, -1, false,
             "Bricht durch Glas-Schilde."),
-    LIGHTNING("lightning", "Lightning", Material.OCELOT_SPAWN_EGG, false, -1,
+    LIGHTNING("lightning", "Lightning", Material.OCELOT_SPAWN_EGG, false, -1, false,
             "Extrem schnell, kleine Ladung."),
-    GUARDIAN("guardian", "Guardian", Material.GUARDIAN_SPAWN_EGG, false, -1,
+    GUARDIAN("guardian", "Guardian", Material.GUARDIAN_SPAWN_EGG, false, -1, true,
             "Mit Plattform obendrauf – zum Mitfahren."),
-    GEMINI("gemini", "Gemini", Material.ALLAY_SPAWN_EGG, false, -1,
+    GEMINI("gemini", "Gemini", Material.ALLAY_SPAWN_EGG, false, -1, true,
             "Zwillingsrakete – trifft breit."),
-    INTERCEPTOR("interceptor", "Abfangjäger", Material.PHANTOM_SPAWN_EGG, false, 3,
+    INTERCEPTOR("interceptor", "Abfangjäger", Material.PHANTOM_SPAWN_EGG, false, 3, false,
             "Zündet sofort beim Aufprall – holt Raketen vom Himmel.");
 
     /** Platzhalter für die Teamfarbe (Flossen). */
@@ -44,10 +44,13 @@ public enum MissileType {
     private final Material item;
     private final boolean piercesGlass;
     private final int fuseOverride;
+    private final boolean rideable;
     private final String description;
     private final List<Part> parts;
 
-    MissileType(String id, String displayName, Material item, boolean piercesGlass, int fuseOverride, String description) {
+    MissileType(String id, String displayName, Material item, boolean piercesGlass, int fuseOverride, boolean rideable,
+                String description) {
+        this.rideable = rideable;
         this.id = id;
         this.displayName = displayName;
         this.item = item;
@@ -64,6 +67,8 @@ public enum MissileType {
     /** Eigene Zündzeit in Ticks, -1 = Config-Wert. */
     public int fuseOverride() { return fuseOverride; }
     public String description() { return description; }
+    /** Kann man oben drauf mitfahren? */
+    public boolean rideable() { return rideable; }
     public List<Part> parts() { return parts; }
 
     public long tntCount() {

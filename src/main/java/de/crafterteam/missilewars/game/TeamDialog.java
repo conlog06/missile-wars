@@ -34,12 +34,12 @@ public final class TeamDialog {
             Component label;
             Component tooltip;
             if (t == null) {
-                label = Msg.mm("<white>Zufällig");
-                tooltip = Msg.mm("<gray>Ins kleinere Team");
+                label = Msg.mm("<txt>Zufällig");
+                tooltip = Msg.mm("<mut>Ins kleinere Team");
             } else {
                 List<Player> members = game.teamPlayers(t);
-                label = Msg.mm(t.colored() + " <gray>(" + members.size() + ")");
-                StringBuilder sb = new StringBuilder("<gray>");
+                label = Msg.mm(t.colored() + " <mut>(" + members.size() + ")");
+                StringBuilder sb = new StringBuilder("<mut>");
                 if (members.isEmpty()) sb.append("Noch leer");
                 for (int i = 0; i < members.size(); i++) {
                     if (i > 0) sb.append("\n");
@@ -55,14 +55,14 @@ public final class TeamDialog {
 
         Team cur = game.team(viewer);
         Dialog dialog = Dialog.create(b -> b.empty()
-                .base(DialogBase.builder(Msg.mm("<red><bold>Missile</bold><white><bold>Wars</bold> <gray>– Team wählen"))
+                .base(DialogBase.builder(Msg.mm("<logo> <mut>– Team wählen"))
                         .canCloseWithEscape(true)
                         .pause(false)
                         .afterAction(DialogBase.DialogAfterAction.CLOSE)
-                        .body(List.of(DialogBody.plainMessage(Msg.mm(cur == null ? "<gray>Wähle dein Team."
-                                : "<gray>Du bist in Team " + cur.colored() + "<gray>. Wechseln?"))))
+                        .body(List.of(DialogBody.plainMessage(Msg.mm(cur == null ? "<mut>Wähle dein Team."
+                                : "<mut>Du bist in Team " + cur.colored() + "<mut>. Wechseln?"))))
                         .build())
-                .type(DialogType.multiAction(buttons, ActionButton.builder(Msg.mm("<gray>Schließen")).width(100).build(), 3)));
+                .type(DialogType.multiAction(buttons, ActionButton.builder(Msg.mm("<mut>Schließen")).width(100).build(), 3)));
         viewer.showDialog(dialog);
     }
 

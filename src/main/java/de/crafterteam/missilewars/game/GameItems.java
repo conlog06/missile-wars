@@ -29,6 +29,7 @@ public final class GameItems {
     public static final String MENU_TEAM = "menu_team";
     public static final String MENU_LEAVE = "menu_leave";
     public static final String MENU_VOTE = "menu_vote";
+    public static final String MENU_GAME = "menu_game";
 
     public static final String WIND_CHARGE = "windcharge";
     public static final String MACE = "mace";
@@ -60,16 +61,17 @@ public final class GameItems {
             int ticks = Math.max(1, plugin.getConfig().getInt("missile.speed." + id, 4));
             long tnt = mt.tntCount();
             String speed = String.format(java.util.Locale.ROOT, "%.1f", 20.0 / ticks);
-            return tagged(new ItemStack(mt.item()), id, "<gold><bold>" + mt.displayName(),
-                    "<gray>" + mt.description(),
-                    "<dark_gray>Tempo: <white>" + speed + " Blöcke/s <dark_gray>| Ladung: <red>" + tnt + " TNT",
-                    "<dark_gray>Rechtsklick auf einen Block (Vorschau beim Halten)");
+            return tagged(new ItemStack(mt.item()), id, "<pri><bold>" + mt.displayName(),
+                    "<mut>" + mt.description(),
+                    "<dim>Tempo: <txt>" + speed + " Blöcke/s <dim>| Ladung: <bad>" + tnt + " TNT",
+                    mt.rideable() ? "<info>⛵ Mitfahren möglich" : "<dim>Kein Mitfahren",
+                    "<dim>Rechtsklick auf einen Block (Vorschau beim Halten)");
         }
         return switch (id) {
-            case SHIELD -> tagged(new ItemStack(Material.SNOWBALL), id, "<aqua><bold>Schild",
-                    "<gray>Werfen – klappt nach kurzer Zeit", "<gray>zu einer Glaswand auf.");
-            case FIREBALL -> tagged(new ItemStack(Material.FIRE_CHARGE), id, "<red><bold>Feuerball",
-                    "<gray>Rechtsklick zum Abfeuern.", "<gray>Kann zurückgeschlagen werden!");
+            case SHIELD -> tagged(new ItemStack(Material.SNOWBALL), id, "<info><bold>Schild",
+                    "<mut>Werfen – klappt nach kurzer Zeit", "<mut>zu einer Glaswand auf.");
+            case FIREBALL -> tagged(new ItemStack(Material.FIRE_CHARGE), id, "<bad><bold>Feuerball",
+                    "<mut>Rechtsklick zum Abfeuern.", "<mut>Kann zurückgeschlagen werden!");
             case ARROWS -> new ItemStack(Material.ARROW, plugin.getConfig().getInt("items.arrows.amount", 3));
             case WIND_CHARGE -> new ItemStack(Material.WIND_CHARGE, plugin.getConfig().getInt("items.windcharge.amount", 2));
             case MACE -> {
@@ -77,12 +79,14 @@ public final class GameItems {
                 mace.editMeta(m -> m.setUnbreakable(true));
                 yield mace;
             }
-            case MENU_TEAM -> tagged(new ItemStack(Material.WHITE_WOOL), id, "<yellow><bold>Team wählen",
-                    "<gray>Rechtsklick");
-            case MENU_VOTE -> tagged(new ItemStack(Material.MAP), id, "<gold><bold>Map-Abstimmung",
-                    "<gray>Rechtsklick");
-            case MENU_LEAVE -> tagged(new ItemStack(Material.RED_BED), id, "<red><bold>Verlassen",
-                    "<gray>Rechtsklick");
+            case MENU_TEAM -> tagged(new ItemStack(Material.WHITE_WOOL), id, "<acc><bold>Team wählen",
+                    "<mut>Rechtsklick");
+            case MENU_GAME -> tagged(new ItemStack(Material.RECOVERY_COMPASS), id, "<pri><bold>Spielmenü",
+                    "<mut>Maps, Statistiken, Bestenliste", "<dim>Rechtsklick");
+            case MENU_VOTE -> tagged(new ItemStack(Material.MAP), id, "<pri><bold>Map-Abstimmung",
+                    "<mut>Rechtsklick");
+            case MENU_LEAVE -> tagged(new ItemStack(Material.RED_BED), id, "<bad><bold>Verlassen",
+                    "<mut>Rechtsklick");
             default -> null;
         };
     }
@@ -143,16 +147,22 @@ public final class GameItems {
     public void giveLobbyItems(Player p, Team team, boolean vote) {
         p.getInventory().clear();
         Material wool = team == Team.GREEN ? Material.LIME_WOOL : Material.RED_WOOL;
-        p.getInventory().setItem(0, tagged(new ItemStack(wool), MENU_TEAM, "<yellow><bold>Team wählen",
-                "<gray>Rechtsklick"));
+        p.getInventory().setItem(0, tagged(new ItemStack(wool), MENU_TEAM, "<acc><bold>Team wählen",
+                "<mut>Rechtsklick"));
         p.getInventory().setItem(8, create(MENU_LEAVE));
         if (vote) p.getInventory().setItem(4, create(MENU_VOTE));
+        p.getInventory().setItem(2, create(MENU_GAME));
+    }
+
+    /** Zuschauer (Spectator-Modus kann keine Items benutzen – Teleporter per /mw teleporter). */
+    public void giveSpectatorItems(Player p) {
+        p.getInventory().clear();
     }
 
     public void giveKit(Player p, Team team) {
         ItemStack bow = new ItemStack(Material.BOW);
         bow.editMeta(m -> {
-            m.displayName(Msg.mm("<yellow><bold>Bogen").decoration(TextDecoration.ITALIC, false));
+            m.displayName(Msg.mm("<acc><bold>Bogen").decoration(TextDecoration.ITALIC, false));
             m.addEnchant(Enchantment.FLAME, 1, true);
             m.setUnbreakable(true);
         });

@@ -110,7 +110,7 @@ public final class Game {
         this.world = world;
         this.board = Bukkit.getScoreboardManager().getNewScoreboard();
         this.sidebar = board.registerNewObjective("mw", Criteria.DUMMY,
-                Msg.mm("<red><bold>Missile</bold><white><bold>Wars"));
+                Msg.mm("<logo>"));
         this.sidebar.setDisplaySlot(DisplaySlot.SIDEBAR);
         this.sidebar.numberFormat(NumberFormat.blank());
         for (Team t : Team.values()) {
@@ -249,7 +249,7 @@ public final class Game {
 
     public void join(Player p) {
         if (state == State.ENDING) {
-            Msg.send(p, "<red>Die Runde endet gleich – versuch es in ein paar Sekunden nochmal.");
+            Msg.send(p, "<bad>Die Runde endet gleich – versuch es in ein paar Sekunden nochmal.");
             return;
         }
         boolean running = state == State.RUNNING;
@@ -258,7 +258,7 @@ public final class Game {
             return;
         }
         if (teams.size() >= max()) {
-            Msg.send(p, "<red>Die Runde ist voll. Du schaust zu.");
+            Msg.send(p, "<bad>Die Runde ist voll. Du schaust zu.");
             spectate(p);
             return;
         }
@@ -269,7 +269,7 @@ public final class Game {
         setBoardTeam(p, t);
         PlayerSnapshot.reset(p);
         p.setScoreboard(board);
-        p.teleport(map.spawn(t).toLocation(world));
+        p.teleport(running ? map.spawn(t).toLocation(world) : waitSpot(t));
 
         names.put(p.getUniqueId(), p.getName());
         if (running) {
@@ -279,15 +279,15 @@ public final class Game {
             giveItem(p);
             p.showBossBar(bossBar);
             plugin.stats().add(p, Stat.GAMES, 1);
-            broadcast(Msg.esc(p.getName()) + " ist Team " + t.colored() + " <gray>beigetreten.");
+            broadcast(Msg.esc(p.getName()) + " ist Team " + t.colored() + " <mut>beigetreten.");
         } else {
             p.setGameMode(GameMode.ADVENTURE);
             giveLobbyItems(p, t);
-            broadcast(Msg.esc(p.getName()) + " ist beigetreten. <dark_gray>(" + teams.size() + "/" + max() + ")");
-            p.sendMessage(Msg.prefixed("Du bist in Team " + t.colored() + "<gray>. Wechseln: ")
-                    .append(Msg.mm("<green><u>[Grün]").clickEvent(ClickEvent.runCommand("/mw team gruen")))
+            broadcast(Msg.esc(p.getName()) + " ist beigetreten. <dim>(" + teams.size() + "/" + max() + ")");
+            p.sendMessage(Msg.prefixed("Du bist in Team " + t.colored() + "<mut>. Wechseln: ")
+                    .append(Msg.mm("<ok><u>[Grün]").clickEvent(ClickEvent.runCommand("/mw team gruen")))
                     .append(Component.space())
-                    .append(Msg.mm("<red><u>[Rot]").clickEvent(ClickEvent.runCommand("/mw team rot"))));
+                    .append(Msg.mm("<bad><u>[Rot]").clickEvent(ClickEvent.runCommand("/mw team rot"))));
             checkStart();
         }
         updateBoard();
@@ -300,36 +300,38 @@ public final class Game {
         plugin.games().bind(p, this);
         PlayerSnapshot.reset(p);
         p.setScoreboard(board);
+        setBoardTeam(p, null);
         p.setGameMode(GameMode.SPECTATOR);
         p.teleport(map.spectatorSpot(world));
-        Msg.send(p, "Du schaust jetzt zu. <dark_gray>/mw leave zum Verlassen");
+        plugin.items().giveSpectatorItems(p);
+        Msg.send(p, "Du schaust jetzt zu. <dim>/mw leave zum Verlassen");
         updateBoard();
     }
 
     public void changeTeam(Player p, Team t) {
         Team cur = teams.get(p.getUniqueId());
         if (cur == null) {
-            Msg.send(p, "<red>Du bist in keinem Team.");
+            Msg.send(p, "<bad>Du bist in keinem Team.");
             return;
         }
         if (state != State.WAITING && state != State.COUNTDOWN) {
-            Msg.send(p, "<red>Teamwechsel geht nur vor dem Start.");
+            Msg.send(p, "<bad>Teamwechsel geht nur vor dem Start.");
             return;
         }
         if (cur == t) {
-            Msg.send(p, "Du bist schon in Team " + t.colored() + "<gray>.");
+            Msg.send(p, "Du bist schon in Team " + t.colored() + "<mut>.");
             return;
         }
         if (teamPlayers(t).size() > teamPlayers(cur).size() - 1) {
-            Msg.send(p, "<red>Team " + t.colored() + " <red>hat schon genug Spieler.");
+            Msg.send(p, "<bad>Team " + t.colored() + " <bad>hat schon genug Spieler.");
             return;
         }
         teams.put(p.getUniqueId(), t);
         setBoardTeam(p, t);
-        p.teleport(map.spawn(t).toLocation(world));
+        if (!plugin.waitingLobby().enabled()) p.teleport(waitSpot(t));
         giveLobbyItems(p, t);
         p.playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
-        Msg.send(p, "Du bist jetzt in Team " + t.colored() + "<gray>.");
+        Msg.send(p, "Du bist jetzt in Team " + t.colored() + "<mut>.");
         updateBoard();
     }
 
@@ -358,12 +360,12 @@ public final class Game {
             return;
         }
         if (state == State.RUNNING && t != null && teamPlayers(t).isEmpty()) {
-            end(t.other(), "Team " + t.colored() + " <gray>hat keine Spieler mehr.");
+            end(t.other(), "Team " + t.colored() + " <mut>hat keine Spieler mehr.");
             return;
         }
         if (state == State.COUNTDOWN && teams.size() < min()) {
             state = State.WAITING;
-            broadcast("<red>Zu wenige Spieler – Countdown abgebrochen.");
+            broadcast("<bad>Zu wenige Spieler – Countdown abgebrochen.");
         }
         updateBoard();
     }
@@ -376,9 +378,7 @@ public final class Game {
     }
 
     private void setBoardTeam(Player p, Team t) {
-        for (org.bukkit.scoreboard.Team st : board.getTeams()) st.removeEntry(p.getName());
-        org.bukkit.scoreboard.Team st = board.getTeam("mw_" + t.name().toLowerCase());
-        if (st != null) st.addEntry(p.getName());
+        plugin.nameTags().applyGame(board, p, t);
     }
 
     // ── Map-Voting ───────────────────────────────────────────────────
@@ -407,18 +407,35 @@ public final class Game {
 
     public void vote(Player p, String mapName) {
         if (!votingOpen()) {
-            Msg.send(p, "<red>Die Abstimmung ist vorbei.");
+            Msg.send(p, "<bad>Die Abstimmung ist vorbei.");
             return;
         }
         MapConfig m = plugin.maps().get(mapName);
         if (m == null || !votableMaps().contains(m)) {
-            Msg.send(p, "<red>Für diese Map kann nicht abgestimmt werden.");
+            Msg.send(p, "<bad>Für diese Map kann nicht abgestimmt werden.");
             return;
         }
         votes.put(p.getUniqueId(), m.name());
         p.playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.3f);
-        broadcast(Msg.esc(p.getName()) + " stimmt für <yellow>" + m.name() + " <dark_gray>(" + votesFor(m.name()) + " Stimmen)");
+        broadcast(Msg.esc(p.getName()) + " stimmt für <acc>" + m.name() + " <dim>(" + votesFor(m.name()) + " Stimmen)");
         updateBoard();
+    }
+
+    /** Wo Spieler vor dem Start warten: Wartelobby oder Team-Spawn. */
+    public Location waitSpot(Team t) {
+        if (plugin.waitingLobby().enabled()) {
+            Location l = plugin.waitingLobby().spawn();
+            if (l != null) return l;
+        }
+        return map.spawn(t == null ? Team.GREEN : t).toLocation(world);
+    }
+
+    /** Darf ein Spieler dieser Runde in dieser Welt sein? */
+    public boolean allowsWorld(World w) {
+        if (w.equals(world)) return true;
+        if (state == State.RUNNING) return false;
+        Location l = plugin.waitingLobby().enabled() ? plugin.waitingLobby().spawn() : null;
+        return l != null && l.getWorld().equals(w);
     }
 
     private void giveLobbyItems(Player p, Team t) {
@@ -438,17 +455,17 @@ public final class Game {
             }
         }
         if (best.equals(map.name())) {
-            broadcast("<gold>Abstimmung: <white>" + map.name() + " <gray>bleibt. <dark_gray>(" + bestVotes + " Stimmen)");
+            broadcast("<pri>Abstimmung: <txt>" + map.name() + " <mut>bleibt. <dim>(" + bestVotes + " Stimmen)");
             return;
         }
         MapConfig target = plugin.maps().get(best);
         if (target == null || plugin.games().get(best) != null) return;
-        broadcast("<gold>Abstimmung: <white>" + best + " <gray>gewinnt mit " + bestVotes + " Stimmen – Arena wird gewechselt …");
+        broadcast("<pri>Abstimmung: <txt>" + best + " <mut>gewinnt mit " + bestVotes + " Stimmen – Arena wird gewechselt …");
         try {
             Game ng = plugin.games().getOrCreate(target);
             transferTo(ng);
         } catch (GameException e) {
-            broadcast("<red>Map-Wechsel fehlgeschlagen: " + Msg.esc(e.getMessage()));
+            broadcast("<bad>Map-Wechsel fehlgeschlagen: " + Msg.esc(e.getMessage()));
         }
     }
 
@@ -469,6 +486,7 @@ public final class Game {
         }
         teams.clear();
         spectators.clear();
+        transferring = true;
         ng.votingDone = true;
         ng.state = State.COUNTDOWN;
         ng.countdown = Math.max(countdown, 5);
@@ -483,13 +501,14 @@ public final class Game {
         p.setScoreboard(board);
         if (spectator || t == null) {
             spectators.add(p.getUniqueId());
+            setBoardTeam(p, null);
             p.setGameMode(GameMode.SPECTATOR);
             p.teleport(map.spectatorSpot(world));
             return;
         }
         teams.put(p.getUniqueId(), t);
         setBoardTeam(p, t);
-        p.teleport(map.spawn(t).toLocation(world));
+        if (!allowsWorld(p.getWorld())) p.teleport(waitSpot(t));
         giveLobbyItems(p, t);
     }
 
@@ -519,7 +538,7 @@ public final class Game {
             case COUNTDOWN -> {
                 if (teams.size() < min() && countdown > 5) {
                     state = State.WAITING;
-                    broadcast("<red>Zu wenige Spieler – Countdown abgebrochen.");
+                    broadcast("<bad>Zu wenige Spieler – Countdown abgebrochen.");
                     break;
                 }
                 if (!votingDone && countdown <= plugin.getConfig().getInt("voting.end-at", 10)) {
@@ -532,7 +551,7 @@ public final class Game {
                 }
                 if (countdown <= 5 || countdown % 10 == 0) {
                     for (Player p : players()) {
-                        p.showTitle(Title.title(Msg.mm("<yellow>" + countdown), Component.empty(),
+                        p.showTitle(Title.title(Msg.mm("<acc>" + countdown), Component.empty(),
                                 Title.Times.times(Duration.ZERO, Duration.ofMillis(900), Duration.ofMillis(100))));
                         p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_HAT, 1f, 1f);
                     }
@@ -545,9 +564,9 @@ public final class Game {
                 if (!suddenDeath && sdAfter > 0 && seconds >= sdAfter) {
                     suddenDeath = true;
                     itemTimer = Math.min(itemTimer, interval());
-                    broadcast("<dark_red><bold>SUDDEN DEATH!</bold> <red>Items kommen jetzt doppelt so schnell.");
+                    broadcast("<bad><bold>SUDDEN DEATH!</bold> <bad>Items kommen jetzt doppelt so schnell.");
                     for (Player p : everyone()) {
-                        p.showTitle(Title.title(Msg.mm("<dark_red><bold>Sudden Death"), Msg.mm("<red>Items x2"),
+                        p.showTitle(Title.title(Msg.mm("<bad><bold>Sudden Death"), Msg.mm("<bad>Items x2"),
                                 Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(2), Duration.ofMillis(500))));
                         p.playSound(p.getLocation(), Sound.ENTITY_WITHER_SPAWN, 0.5f, 1.2f);
                     }
@@ -562,6 +581,19 @@ public final class Game {
             }
         }
         updateBoard();
+        updateTab();
+    }
+
+    private void updateTab() {
+        String line = switch (state) {
+            case WAITING -> "<mut>Warte auf Spieler <dim>(" + teams.size() + "/" + min() + ")";
+            case COUNTDOWN -> "<mut>Start in <acc>" + Math.max(0, countdown) + "s";
+            case RUNNING -> "<mut>Zeit <txt>" + formatTime(seconds) + (suddenDeath ? " <bad><bold>SUDDEN DEATH" : "");
+            case ENDING -> "<pri>Runde beendet";
+        };
+        String footer = Team.GREEN.colored() + " <txt>" + teamPlayers(Team.GREEN).size() + " <dim>vs <txt>"
+                + teamPlayers(Team.RED).size() + " " + Team.RED.colored() + "\n<mut>Map: <txt>" + Msg.esc(map.name());
+        for (Player p : everyone()) plugin.nameTags().header(p, line, footer);
     }
 
     private int interval() {
@@ -574,8 +606,8 @@ public final class Game {
         int iv = interval();
         bossBar.progress(Math.max(0f, Math.min(1f, itemTimer / (float) iv)));
         bossBar.color(suddenDeath ? BossBar.Color.RED : BossBar.Color.YELLOW);
-        String prefix = suddenDeath ? "<dark_red><bold>SUDDEN DEATH</bold> <dark_gray>| " : "";
-        bossBar.name(Msg.mm(prefix + "<gray>Nächstes Item in <yellow>" + itemTimer + "s"));
+        String prefix = suddenDeath ? "<bad><bold>SUDDEN DEATH</bold> <dim>| " : "";
+        bossBar.name(Msg.mm(prefix + "<mut>Nächstes Item in <acc>" + itemTimer + "s"));
     }
 
     /** Teams vor dem Start ausgleichen (Unterschied max. 1). */
@@ -589,7 +621,7 @@ public final class Game {
             Player moved = bigger.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(bigger.size()));
             teams.put(moved.getUniqueId(), target);
             setBoardTeam(moved, target);
-            Msg.send(moved, "<yellow>Teams ausgeglichen – du bist jetzt in Team " + target.colored() + "<yellow>.");
+            Msg.send(moved, "<acc>Teams ausgeglichen – du bist jetzt in Team " + target.colored() + "<acc>.");
         }
     }
 
@@ -620,12 +652,12 @@ public final class Game {
             plugin.items().giveKit(p, t);
             applyCombat(p);
             for (int i = 0; i < startItems; i++) giveItem(p);
-            p.showTitle(Title.title(Msg.mm("<green><bold>Los!"),
-                    Msg.mm("<gray>Zerstöre das Portal von Team " + t.other().colored()),
+            p.showTitle(Title.title(Msg.mm("<ok><bold>Los!"),
+                    Msg.mm("<mut>Zerstöre das Portal von Team " + t.other().colored()),
                     Title.Times.times(Duration.ZERO, Duration.ofSeconds(2), Duration.ofMillis(500))));
             p.playSound(p.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 0.6f, 1.2f);
         }
-        broadcast("<green>Die Runde startet! <gray>Alle " + interval() + "s gibt es ein neues Item.");
+        broadcast("<ok>Die Runde startet! <mut>Alle " + interval() + "s gibt es ein neues Item.");
     }
 
     private void giveItem(Player p) {
@@ -646,10 +678,10 @@ public final class Game {
             Missile.Result r = m.tick();
             if (r != Missile.Result.FLYING) {
                 if (r == Missile.Result.EXPLODED && m.owner() != null && m.owner().isOnline()) {
-                    m.owner().sendActionBar(Msg.mm("<gold>💥 " + m.type().displayName() + " eingeschlagen!"));
+                    m.owner().sendActionBar(Msg.mm("<pri>💥 " + m.type().displayName() + " eingeschlagen!"));
                 }
                 if (r == Missile.Result.STOPPED && m.owner() != null && m.owner().isOnline()) {
-                    m.owner().sendActionBar(Msg.mm("<gray>Deine " + m.type().displayName() + " wurde gestoppt."));
+                    m.owner().sendActionBar(Msg.mm("<mut>Deine " + m.type().displayName() + " wurde gestoppt."));
                 }
                 if (r == Missile.Result.EXPLODED && m.owner() != null) {
                     Team defender = map.forward(Team.GREEN) == m.dir() ? Team.RED : Team.GREEN;
@@ -667,7 +699,10 @@ public final class Game {
             for (Player p : players()) {
                 if (p.getLocation().getY() < map.deathY()) {
                     if (state == State.RUNNING) die(p, "ist ins Void gefallen", true);
-                    else p.teleport(map.spawn(team(p)).toLocation(world));
+                    else if (p.getWorld().equals(world)) p.teleport(waitSpot(team(p)));
+                } else if (state != State.RUNNING && plugin.waitingLobby().enabled()
+                        && !p.getWorld().equals(world) && p.getLocation().getY() < plugin.waitingLobby().voidY()) {
+                    p.teleport(waitSpot(team(p)));
                 }
             }
         }
@@ -682,16 +717,16 @@ public final class Game {
                     Player hp = hitter == null ? null : Bukkit.getPlayer(hitter);
                     if (hp != null && team(hp) == t.other()) {
                         plugin.stats().add(hp, Stat.PORTALS, 1);
-                        by = " <dark_gray>(von <white>" + Msg.esc(hp.getName()) + "<dark_gray>)";
+                        by = " <dim>(von <txt>" + Msg.esc(hp.getName()) + "<dim>)";
                     }
                     updatePortalHolograms();
-                    end(t.other(), "Das Portal von Team " + t.colored() + " <gray>wurde zerstört!" + by);
+                    end(t.other(), "Das Portal von Team " + t.colored() + " <mut>wurde zerstört!" + by);
                     return;
                 }
                 Integer before = lastPortalLeft.put(t, left);
                 if (before != null && left < before) {
                     for (Player pl : teamPlayers(t)) {
-                        pl.showTitle(Title.title(Component.empty(), Msg.mm("<red>Euer Portal wird getroffen! <white>" + portalHp.get(t) + "%"),
+                        pl.showTitle(Title.title(Component.empty(), Msg.mm("<bad>Euer Portal wird getroffen! <txt>" + portalHp.get(t) + "%"),
                                 Title.Times.times(Duration.ZERO, Duration.ofMillis(1500), Duration.ofMillis(300))));
                         pl.playSound(pl.getLocation(), Sound.BLOCK_GLASS_BREAK, 1f, 0.6f);
                     }
@@ -757,9 +792,9 @@ public final class Game {
             int hp = portalHp.getOrDefault(t, 100);
             int filled = Math.round(hp / 5f);
             String color = hp > 60 ? "green" : hp > 25 ? "yellow" : "red";
-            String bar = "<" + color + ">" + "|".repeat(filled) + "<dark_gray>" + "|".repeat(20 - filled);
-            String mode = lossPercent() <= 0 ? "<gray>1 Treffer = Niederlage" : bar + " <white>" + hp + "%";
-            td.text(Msg.mm("<bold>" + t.colored() + "</bold>\n<gray>Portal\n" + mode));
+            String bar = "<" + color + ">" + "|".repeat(filled) + "<dim>" + "|".repeat(20 - filled);
+            String mode = lossPercent() <= 0 ? "<mut>1 Treffer = Niederlage" : bar + " <txt>" + hp + "%";
+            td.text(Msg.mm("<bold>" + t.colored() + "</bold>\n<mut>Portal\n" + mode));
         }
     }
 
@@ -789,6 +824,35 @@ public final class Game {
         }
     }
 
+    /** Killstreaks & First Blood. */
+    private void onKill(Player k) {
+        if (!firstBlood) {
+            firstBlood = true;
+            broadcast("<bad><bold>FIRST BLOOD!</bold> <txt>" + Msg.esc(k.getName()) + " <mut>hat den ersten Kill.");
+            for (Player p : everyone()) p.playSound(p.getLocation(), Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 0.4f, 1.4f);
+        }
+        int streak = streaks.merge(k.getUniqueId(), 1, Integer::sum);
+        if (!plugin.getConfig().getBoolean("killstreaks.enabled", true)) return;
+        String title = switch (streak) {
+            case 3 -> "<acc>Killing Spree";
+            case 5 -> "<pri>Rampage";
+            case 7 -> "<bad>Unaufhaltsam";
+            case 10 -> "<gradient:#FF2E63:#FFC145>GODLIKE</gradient>";
+            default -> null;
+        };
+        if (title == null) return;
+        broadcast("<txt>" + Msg.esc(k.getName()) + " <mut>ist auf einer <bold>" + title + "</bold> <dim>(" + streak + " Kills)");
+        k.showTitle(Title.title(Msg.mm("<bold>" + title), Msg.mm("<mut>" + streak + " Kills in Folge – Bonus-Item!"),
+                Title.Times.times(Duration.ZERO, Duration.ofMillis(1500), Duration.ofMillis(400))));
+        k.playSound(k.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1.2f);
+        // Belohnung: Bonus-Item (ab 5er-Serie zusätzlich eine Rakete)
+        giveItem(k);
+        if (streak >= 5) {
+            ItemStack bonus = plugin.items().create(streak >= 7 ? "juggernaut" : "tomahawk");
+            if (bonus != null) k.getInventory().addItem(bonus);
+        }
+    }
+
     /** Verteidiger warnen, wenn eine Rakete nah ans eigene Portal kommt. */
     private void checkWarning(Missile m) {
         int dist = plugin.getConfig().getInt("warning.distance", 20);
@@ -811,8 +875,8 @@ public final class Game {
         double rel = (m.centerX() - portal.centerX()) * -map.forward(defender);
         String side = rel > 3 ? "rechts" : rel < -3 ? "links" : "mittig";
         for (Player p : teamPlayers(defender)) {
-            p.showTitle(Title.title(Msg.mm("<red><bold>⚠ Rakete!"),
-                    Msg.mm("<gray>" + m.type().displayName() + " im Anflug <dark_gray>(" + side + ")"),
+            p.showTitle(Title.title(Msg.mm("<bad><bold>⚠ Rakete!"),
+                    Msg.mm("<mut>" + m.type().displayName() + " im Anflug <dim>(" + side + ")"),
                     Title.Times.times(Duration.ZERO, Duration.ofMillis(1200), Duration.ofMillis(300))));
             p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 0.5f);
         }
@@ -838,18 +902,21 @@ public final class Game {
                 round(k.getUniqueId())[0]++;
                 plugin.stats().add(k, Stat.KILLS, 1);
                 k.playSound(k.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1.2f);
+                onKill(k);
             }
         }
         lastAttacker.remove(p.getUniqueId());
         lastAttackTime.remove(p.getUniqueId());
         round(p.getUniqueId())[1]++;
         plugin.stats().add(p, Stat.DEATHS, 1);
+        Integer lost = streaks.remove(p.getUniqueId());
+        if (lost != null && lost >= 3) broadcast("<mut>Die Serie von <txt>" + Msg.esc(p.getName()) + " <mut>(" + lost + " Kills) ist beendet.");
 
         String name = "<" + t.tag() + ">" + Msg.esc(p.getName()) + "</" + t.tag() + ">";
         if (killer != null) {
-            broadcast(name + " <gray>wurde von " + killer + " <gray>" + (voidDeath ? "ins Void befördert." : "getötet."));
+            broadcast(name + " <mut>wurde von " + killer + " <mut>" + (voidDeath ? "ins Void befördert." : "getötet."));
         } else {
-            broadcast(name + " <gray>" + reason + ".");
+            broadcast(name + " <mut>" + reason + ".");
         }
 
         p.setFireTicks(0);
@@ -924,13 +991,13 @@ public final class Game {
             int active = 0;
             for (Missile m : missiles) if (m.dir() == dir) active++;
             if (active >= maxActive) {
-                Msg.send(p, "<red>Dein Team hat schon " + active + " Raketen in der Luft – warte kurz.");
+                Msg.send(p, "<bad>Dein Team hat schon " + active + " Raketen in der Luft – warte kurz.");
                 return false;
             }
         }
         Placement pl = placement(t, type, origin);
         if (pl.error() != null) {
-            Msg.send(p, "<red>" + pl.error());
+            Msg.send(p, "<bad>" + pl.error());
             p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 0.6f, 1f);
             return false;
         }
@@ -979,7 +1046,7 @@ public final class Game {
         state = State.ENDING;
         missiles.clear();
         broadcast(reason);
-        broadcast("Team " + winner.colored() + " <gray>hat gewonnen! <dark_gray>(" + formatTime(seconds) + ")");
+        broadcast("Team " + winner.colored() + " <mut>hat gewonnen! <dim>(" + formatTime(seconds) + ")");
         for (Player p : players()) {
             plugin.stats().add(p, team(p) == winner ? Stat.WINS : Stat.LOSSES, 1);
             plugin.preview().hide(p);
@@ -990,8 +1057,8 @@ public final class Game {
         for (Player p : everyone()) {
             boolean won = team(p) == winner;
             p.showTitle(Title.title(
-                    Msg.mm(won ? "<gold><bold>Sieg!" : (team(p) == null ? winner.colored() + " gewinnt" : "<red><bold>Niederlage")),
-                    Msg.mm("<gray>Team " + winner.colored() + " <gray>gewinnt"),
+                    Msg.mm(won ? "<pri><bold>Sieg!" : (team(p) == null ? winner.colored() + " gewinnt" : "<bad><bold>Niederlage")),
+                    Msg.mm("<mut>Team " + winner.colored() + " <mut>gewinnt"),
                     Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(4), Duration.ofMillis(800))));
             p.playSound(p.getLocation(), won ? Sound.UI_TOAST_CHALLENGE_COMPLETE : Sound.ENTITY_WITHER_DEATH, 0.7f, 1f);
             if (team(p) != null) p.setGameMode(GameMode.ADVENTURE);
@@ -1024,32 +1091,35 @@ public final class Game {
             return c != 0 ? c : Integer.compare(a.getValue()[1], b.getValue()[1]);
         });
         List<Component> lines = new ArrayList<>();
-        lines.add(Msg.mm("<dark_gray><st>                                        "));
-        lines.add(Msg.mm("  <gold><bold>Rundenauswertung</bold> <dark_gray>– " + formatTime(seconds)));
+        lines.add(Msg.mm("<dim><st>                                        "));
+        lines.add(Msg.mm("  <pri><bold>Rundenauswertung</bold> <dim>– " + formatTime(seconds)));
         if (!list.isEmpty()) {
             Map.Entry<UUID, int[]> mvp = list.getFirst();
             int[] v = mvp.getValue();
-            lines.add(Msg.mm("  <yellow>★ MVP: <white>" + Msg.esc(names.getOrDefault(mvp.getKey(), "?"))
-                    + " <gray>(" + v[0] + " Kills, " + v[2] + " Raketen)"));
-            String[] medals = {"<gold>1.", "<gray>2.", "<#cd7f32>3."};
+            lines.add(Msg.mm("  <acc>★ MVP: <txt>" + Msg.esc(names.getOrDefault(mvp.getKey(), "?"))
+                    + " <mut>(" + v[0] + " Kills, " + v[2] + " Raketen)"));
+            String[] medals = {"<pri>1.", "<mut>2.", "<#cd7f32>3."};
             for (int i = 0; i < Math.min(3, list.size()); i++) {
                 int[] s = list.get(i).getValue();
-                lines.add(Msg.mm("  " + medals[i] + " <white>" + Msg.esc(names.getOrDefault(list.get(i).getKey(), "?"))
-                        + " <dark_gray>» <green>" + s[0] + " K <red>" + s[1] + " T <aqua>" + s[2] + " R"));
+                lines.add(Msg.mm("  " + medals[i] + " <txt>" + Msg.esc(names.getOrDefault(list.get(i).getKey(), "?"))
+                        + " <dim>» <ok>" + s[0] + " K <bad>" + s[1] + " T <info>" + s[2] + " R"));
             }
         }
-        lines.add(Msg.mm("<dark_gray><st>                                        "));
+        lines.add(Msg.mm("<dim><st>                                        "));
         for (Player p : everyone()) {
             for (Component c : lines) p.sendMessage(c);
             int[] own = round.get(p.getUniqueId());
             if (own != null) {
-                p.sendMessage(Msg.mm("  <gray>Du: <green>" + own[0] + " Kills <dark_gray>| <red>" + own[1]
-                        + " Tode <dark_gray>| <aqua>" + own[2] + " Raketen"));
+                p.sendMessage(Msg.mm("  <mut>Du: <ok>" + own[0] + " Kills <dim>| <bad>" + own[1]
+                        + " Tode <dim>| <info>" + own[2] + " Raketen"));
             }
         }
     }
 
     private boolean shutDown;
+    private boolean transferring;
+    private boolean firstBlood;
+    private final Map<UUID, Integer> streaks = new HashMap<>();
 
     /** Alle raus, Welt löschen. */
     public void shutdown() {
@@ -1068,6 +1138,7 @@ public final class Game {
             p.hideBossBar(bossBar);
             PlayerSnapshot snap = snapshots.remove(id);
             if (snap != null) snap.restore(p, plugin.lobby());
+            if (!transferring) plugin.serverMode().afterGame(p);
         }
         teams.clear();
         spectators.clear();
@@ -1107,33 +1178,33 @@ public final class Game {
 
     private void updateBoard() {
         List<String> lines = new ArrayList<>();
-        lines.add("<dark_gray>" + map.name());
+        lines.add("<dim>" + map.name());
         lines.add("");
         switch (state) {
-            case WAITING -> lines.add("<gray>Warte auf Spieler <dark_gray>(" + teams.size() + "/" + min() + ")");
-            case COUNTDOWN -> lines.add("<gray>Start in <yellow>" + Math.max(0, countdown) + "s");
-            case RUNNING -> lines.add("<gray>Zeit: <white>" + formatTime(seconds));
-            case ENDING -> lines.add("<gold>Runde beendet");
+            case WAITING -> lines.add("<mut>Warte auf Spieler <dim>(" + teams.size() + "/" + min() + ")");
+            case COUNTDOWN -> lines.add("<mut>Start in <acc>" + Math.max(0, countdown) + "s");
+            case RUNNING -> lines.add("<mut>Zeit: <txt>" + formatTime(seconds));
+            case ENDING -> lines.add("<pri>Runde beendet");
         }
         if (votingOpen() && !votes.isEmpty()) {
             String lead = map.name();
             int lv = votesFor(lead);
             for (MapConfig m : votableMaps()) if (votesFor(m.name()) > lv) { lead = m.name(); lv = votesFor(lead); }
-            lines.add("<gray>Vote: <yellow>" + lead + " <dark_gray>(" + lv + ")");
+            lines.add("<mut>Vote: <acc>" + lead + " <dim>(" + lv + ")");
         }
         lines.add(" ");
-        lines.add(Team.GREEN.colored() + "<gray>: <white>" + teamPlayers(Team.GREEN).size());
-        lines.add(Team.RED.colored() + "<gray>: <white>" + teamPlayers(Team.RED).size());
+        lines.add(Team.GREEN.colored() + "<mut>: <txt>" + teamPlayers(Team.GREEN).size());
+        lines.add(Team.RED.colored() + "<mut>: <txt>" + teamPlayers(Team.RED).size());
         if (state == State.RUNNING && lossPercent() > 0) {
             lines.add("   ");
             for (Team t : Team.values()) {
                 int hp = portalHp.getOrDefault(t, 100);
-                lines.add("<gray>Portal " + t.colored() + "<gray>: " + (hp > 60 ? "<green>" : hp > 25 ? "<yellow>" : "<red>") + hp + "%");
+                lines.add("<mut>Portal " + t.colored() + "<mut>: " + (hp > 60 ? "<ok>" : hp > 25 ? "<acc>" : "<bad>") + hp + "%");
             }
         }
         if (state == State.RUNNING) {
             lines.add("  ");
-            lines.add("<gray>Item in <yellow>" + itemTimer + "s");
+            lines.add("<mut>Item in <acc>" + itemTimer + "s");
         }
         for (int i = 0; i < lines.size(); i++) {
             Score s = sidebar.getScore("l" + i);

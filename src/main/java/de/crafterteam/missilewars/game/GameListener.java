@@ -112,7 +112,11 @@ public final class GameListener implements Listener {
             boolean dialog = "dialog".equalsIgnoreCase(plugin.getConfig().getString("menu-style", "dialog"));
             // Schleichen + Rechtsklick öffnet immer das Inventar-Menü (Fallback für alte Clients)
             if (dialog && !p.isSneaking()) TeamDialog.open(plugin, g, p);
-            else p.openInventory(new TeamMenu(g, p).getInventory());
+            else de.crafterteam.missilewars.gui.Menus.team(plugin, g, p);
+            return;
+        }
+        if (GameItems.MENU_GAME.equals(id)) {
+            de.crafterteam.missilewars.gui.Menus.main(plugin, p);
             return;
         }
         if (GameItems.MENU_VOTE.equals(id)) {
@@ -121,7 +125,7 @@ public final class GameListener implements Listener {
         }
         if (GameItems.MENU_LEAVE.equals(id)) {
             g.leave(p, true);
-            Msg.send(p, "Du hast die Runde verlassen.");
+            if (!plugin.serverMode().handleLeave(p)) Msg.send(p, "Du hast die Runde verlassen.");
             return;
         }
         if (g.state() != Game.State.RUNNING || g.team(p) == null) return;
@@ -162,39 +166,55 @@ public final class GameListener implements Listener {
         }
     }
 
-    // ── Team-Menü ────────────────────────────────────────────────────
+    // ── Wartelobby-Schutz ────────────────────────────────────────────
+
+    private boolean lobbyProtected(org.bukkit.World w, Player p) {
+        if (!plugin.waitingLobby().isLobbyWorld(w)) return false;
+        return !(p != null && p.hasPermission("missilewars.admin") && p.getGameMode() == GameMode.CREATIVE);
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onLobbyBreak(BlockBreakEvent e) {
+        if (lobbyProtected(e.getBlock().getWorld(), e.getPlayer())) e.setCancelled(true);
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onLobbyPlace(BlockPlaceEvent e) {
+        if (lobbyProtected(e.getBlock().getWorld(), e.getPlayer())) e.setCancelled(true);
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onLobbyDamage(EntityDamageEvent e) {
+        if (e.getEntity() instanceof Player p && plugin.waitingLobby().isLobbyWorld(p.getWorld())) {
+            e.setCancelled(true);
+            if (e.getCause() == EntityDamageEvent.DamageCause.VOID) {
+                org.bukkit.Location l = plugin.waitingLobby().spawn();
+                if (l != null) p.teleport(l);
+            }
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onLobbyFood(FoodLevelChangeEvent e) {
+        if (plugin.waitingLobby().isLobbyWorld(e.getEntity().getWorld())) e.setCancelled(true);
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onLobbySpawn(CreatureSpawnEvent e) {
+        if (plugin.waitingLobby().isLobbyWorld(e.getLocation().getWorld())
+                && e.getSpawnReason() == CreatureSpawnEvent.SpawnReason.NATURAL) e.setCancelled(true);
+    }
+
+    // ── Menüs ────────────────────────────────────────────────────────
 
     @EventHandler
     public void onMenuClick(InventoryClickEvent e) {
-        if (!(e.getView().getTopInventory().getHolder() instanceof TeamMenu)) return;
-        e.setCancelled(true);
-        if (!(e.getWhoClicked() instanceof Player p)) return;
-        if (e.getClickedInventory() != e.getView().getTopInventory()) return;
-        Game g = gameOf(p);
-        if (g == null) {
-            p.closeInventory();
-            return;
-        }
-        Team target = switch (e.getSlot()) {
-            case TeamMenu.SLOT_GREEN -> Team.GREEN;
-            case TeamMenu.SLOT_RED -> Team.RED;
-            case TeamMenu.SLOT_RANDOM -> {
-                int gr = g.teamPlayers(Team.GREEN).size(), rd = g.teamPlayers(Team.RED).size();
-                Team cur = g.team(p);
-                // wechseln nur, wenn es das andere Team nicht überfüllt
-                yield cur != null && g.teamPlayers(cur.other()).size() < g.teamPlayers(cur).size() ? cur.other()
-                        : (gr == rd ? (Math.random() < 0.5 ? Team.GREEN : Team.RED) : (gr < rd ? Team.GREEN : Team.RED));
-            }
-            default -> null;
-        };
-        if (target == null) return;
-        p.closeInventory();
-        if (target != g.team(p)) g.changeTeam(p, target);
+        if (e.getView().getTopInventory().getHolder() instanceof de.crafterteam.missilewars.gui.Gui gui) gui.handle(e);
     }
 
     @EventHandler
     public void onMenuDrag(InventoryDragEvent e) {
-        if (e.getView().getTopInventory().getHolder() instanceof TeamMenu) e.setCancelled(true);
+        if (e.getView().getTopInventory().getHolder() instanceof de.crafterteam.missilewars.gui.Gui) e.setCancelled(true);
     }
 
     // ── Join-Schilder ────────────────────────────────────────────────
@@ -207,18 +227,18 @@ public final class GameListener implements Listener {
         Player p = e.getPlayer();
         if (!p.hasPermission("missilewars.admin")) {
             e.setCancelled(true);
-            Msg.send(p, "<red>Keine Berechtigung für Join-Schilder.");
+            Msg.send(p, "<bad>Keine Berechtigung für Join-Schilder.");
             return;
         }
         String map = PlainTextComponentSerializer.plainText().serialize(
                 e.line(1) == null ? net.kyori.adventure.text.Component.empty() : e.line(1)).trim().toLowerCase();
         if (map.isEmpty()) map = plugin.getConfig().getString("default-map", "standard");
         if (plugin.maps().get(map) == null) {
-            Msg.send(p, "<red>Map '" + Msg.esc(map) + "' gibt es nicht. <gray>Zeile 2 = Mapname");
+            Msg.send(p, "<bad>Map '" + Msg.esc(map) + "' gibt es nicht. <mut>Zeile 2 = Mapname");
             return;
         }
         plugin.signs().add(e.getBlock(), map);
-        Msg.send(p, "<green>Join-Schild für '" + map + "' erstellt.");
+        Msg.send(p, "<ok>Join-Schild für '" + map + "' erstellt.");
         Bukkit.getScheduler().runTask(plugin, plugin.signs()::updateAll);
     }
 
@@ -237,11 +257,11 @@ public final class GameListener implements Listener {
         if (plugin.signs().mapAt(e.getBlock()) == null) return;
         if (!e.getPlayer().hasPermission("missilewars.admin") || !e.getPlayer().isSneaking()) {
             e.setCancelled(true);
-            Msg.send(e.getPlayer(), "<gray>Zum Entfernen: als Admin <yellow>schleichen</yellow> + abbauen.");
+            Msg.send(e.getPlayer(), "<mut>Zum Entfernen: als Admin <acc>schleichen</acc> + abbauen.");
             return;
         }
         plugin.signs().remove(e.getBlock());
-        Msg.send(e.getPlayer(), "<green>Join-Schild entfernt.");
+        Msg.send(e.getPlayer(), "<ok>Join-Schild entfernt.");
     }
 
     // ── Teamchat ─────────────────────────────────────────────────────
@@ -261,11 +281,14 @@ public final class GameListener implements Listener {
         e.viewers().addAll(receivers);
 
         String prefix;
-        if (t == null) prefix = "<gray>[Zuschauer] ";
+        if (t == null) prefix = "<mut>[Zuschauer] ";
         else if (all) prefix = "<" + t.tag() + ">[" + t.displayName() + "] ";
         else prefix = "<" + t.tag() + ">[Team] ";
-        String namePart = prefix + "<white>" + Msg.esc(p.getName()) + "<dark_gray> » <gray>";
-        e.renderer((source, displayName, message, viewer) -> Msg.mm(namePart).append(message));
+        net.kyori.adventure.text.Component rank = plugin.nameTags().prefix(p);
+        net.kyori.adventure.text.Component head = rank.equals(net.kyori.adventure.text.Component.empty())
+                ? Msg.mm(prefix) : Msg.mm(prefix).append(rank).append(net.kyori.adventure.text.Component.space());
+        String rest = "<txt>" + Msg.esc(p.getName()) + "<dim> » <mut>";
+        e.renderer((source, displayName, message, viewer) -> head.append(Msg.mm(rest)).append(message));
     }
 
     @EventHandler
@@ -442,7 +465,7 @@ public final class GameListener implements Listener {
     @EventHandler
     public void onWorldChange(PlayerChangedWorldEvent e) {
         Game g = gameOf(e.getPlayer());
-        if (g != null && !e.getPlayer().getWorld().equals(g.world())) {
+        if (g != null && !g.allowsWorld(e.getPlayer().getWorld())) {
             g.leave(e.getPlayer(), false);
             Msg.send(e.getPlayer(), "Du hast die Runde verlassen.");
         }

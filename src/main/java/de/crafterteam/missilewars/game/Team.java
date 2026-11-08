@@ -8,8 +8,8 @@ import java.util.Locale;
 
 public enum Team {
 
-    GREEN("Grün", "green", NamedTextColor.GREEN, Material.LIME_CONCRETE, Material.LIME_STAINED_GLASS, Color.LIME),
-    RED("Rot", "red", NamedTextColor.RED, Material.RED_CONCRETE, Material.RED_STAINED_GLASS, Color.RED);
+    GREEN("Grün", "tgreen", NamedTextColor.GREEN, Material.LIME_CONCRETE, Material.LIME_STAINED_GLASS, Color.LIME),
+    RED("Rot", "tred", NamedTextColor.RED, Material.RED_CONCRETE, Material.RED_STAINED_GLASS, Color.RED);
 
     private final String displayName;
     private final String tag;
@@ -51,6 +51,16 @@ public enum Team {
 
     public Material glass() {
         return glass;
+    }
+
+    /** Zweiter Bodenton der Arena. */
+    public Material floor2() {
+        return this == GREEN ? Material.GREEN_CONCRETE : Material.RED_NETHER_BRICKS;
+    }
+
+    /** Glasscheibe für Arena-Wände (nicht abbaubar, im Gegensatz zum Schild-Glas). */
+    public Material pane() {
+        return this == GREEN ? Material.LIME_STAINED_GLASS_PANE : Material.RED_STAINED_GLASS_PANE;
     }
 
     /** Teamfarbe für Raketen-Flossen. */
