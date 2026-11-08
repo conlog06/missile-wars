@@ -1,0 +1,77 @@
+# ─────────────────────────────────────────────
+#  MissileWars – Konfiguration
+# ─────────────────────────────────────────────
+
+# Wohin Spieler nach der Runde kommen. Mit /mw setlobby setzen.
+# Leer = zurück an den Ort, von dem sie /mw join gemacht haben.
+lobby: ''
+
+# Map, die /mw join ohne Angabe nimmt
+default-map: standard
+
+players:
+  min: 2            # ab so vielen Spielern startet der Countdown
+  max: 16
+  allow-late-join: true   # während der Runde noch einem Team beitreten
+
+countdown:
+  normal: 20
+  full: 10          # wenn die Runde voll ist
+
+# Alle X Sekunden bekommt jeder Spieler ein zufälliges Item
+item-interval: 15
+start-items: 1      # Items direkt beim Start
+start-arrows: 3
+
+end-delay: 8        # Sekunden nach dem Sieg, bis alle zurück in die Lobby kommen
+
+missile:
+  fuse-ticks: 60          # Zündzeit der TNT nach dem Aufprall (Vanilla-Redstone: 80)
+  max-steps: 260          # danach bleibt die Rakete einfach stehen
+  pierce-glass-max: 12    # Shieldbuster: so viele Glasblöcke durchbricht er
+  own-half-only: true     # Raketen nur auf der eigenen Hälfte spawnen
+  # Ticks pro Block (kleiner = schneller)
+  speed:
+    tomahawk: 4
+    juggernaut: 6
+    shieldbuster: 4
+    lightning: 2
+    guardian: 5
+
+shield:
+  radius: 3
+  deploy-ticks: 20        # nach so vielen Ticks klappt der Schild auf
+
+fireball:
+  yield: 2.0
+
+# Item-Pool: weight = Wahrscheinlichkeit, max = höchstens so viele im Inventar
+items:
+  tomahawk:     { weight: 10, max: 2 }
+  juggernaut:   { weight: 6,  max: 1 }
+  shieldbuster: { weight: 6,  max: 1 }
+  lightning:    { weight: 8,  max: 2 }
+  guardian:     { weight: 6,  max: 1 }
+  shield:       { weight: 8,  max: 2 }
+  fireball:     { weight: 6,  max: 2 }
+  arrows:       { weight: 8,  max: 9, amount: 3 }
+
+# Standard-Arena (generiert)
+generator:
+  distance: 60      # Abstand Mitte → Portal (Gesamtlänge = 2x)
+
+# Diese Blöcke dürfen Spieler im Spiel abbauen (Raketen entschärfen, Schilde zerstören)
+breakable:
+  - SLIME_BLOCK
+  - HONEY_BLOCK
+  - PISTON
+  - STICKY_PISTON
+  - PISTON_HEAD
+  - MOVING_PISTON
+  - OBSERVER
+  - TNT
+  - REDSTONE_BLOCK
+  - LIME_STAINED_GLASS
+  - RED_STAINED_GLASS
+  - WHITE_STAINED_GLASS
+  - GLASS

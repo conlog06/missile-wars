@@ -1,0 +1,45 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Build
+        run: mvn -B -q package
+
+      - name: Version lesen
+        id: v
+        run: echo "version=$(mvn -q help:evaluate -Dexpression=project.version -DforceStdout)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MissileWars-${{ steps.v.outputs.version }}
+          path: target/MissileWars-*.jar
+
+      - name: Release veröffentlichen
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.v.outputs.version }}
+          name: MissileWars ${{ steps.v.outputs.version }} (Paper 26.3)
+          make_latest: true
+          files: target/MissileWars-*.jar
+          body: |
+            Missile Wars für **Paper 26.3** (Java 21+).
+            JAR in `plugins/` legen, Server starten, ingame `/mw join` – die Standard-Arena wird automatisch generiert.
+            Eigene Maps: `/mw map create <name> arena` bzw. `/mw map import <name> <welt>` (siehe README).
