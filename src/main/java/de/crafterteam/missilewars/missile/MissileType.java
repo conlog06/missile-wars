@@ -82,7 +82,7 @@ public enum MissileType {
     private static List<Part> design(String id) {
         List<Part> p = new ArrayList<>();
         Material S = Material.SLIME_BLOCK, T = Material.TNT, R = Material.REDSTONE_BLOCK,
-                H = Material.HONEY_BLOCK, A = TEAM_ACCENT;
+                H = Material.HONEY_BLOCK, A = Material.WHITE_TERRACOTTA; // = TEAM_ACCENT (Konstante ist hier noch nicht initialisiert)
         switch (id) {
             case "tomahawk" -> {
                 // 1 breit, 2 hoch, 7 lang

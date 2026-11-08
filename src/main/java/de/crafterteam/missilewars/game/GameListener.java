@@ -75,7 +75,7 @@ public final class GameListener implements Listener {
         // Alles, woraus Raketen bestehen, ist immer abbaubar (entschärfen)
         for (de.crafterteam.missilewars.missile.MissileType t : de.crafterteam.missilewars.missile.MissileType.values()) {
             for (var part : t.parts()) {
-                if (part.material() != de.crafterteam.missilewars.missile.MissileType.TEAM_ACCENT) breakable.add(part.material());
+                if (part.material() != null && part.material() != de.crafterteam.missilewars.missile.MissileType.TEAM_ACCENT) breakable.add(part.material());
             }
         }
         for (Team t : Team.values()) {
