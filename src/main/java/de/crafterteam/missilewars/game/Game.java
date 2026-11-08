@@ -135,10 +135,15 @@ public final class Game {
             if (!map.ready()) throw new GameException("Map '" + map.name() + "' ist im Setup – erst /mw map finish " + map.name());
             if (Bukkit.getWorld(map.templateWorld()) != null)
                 throw new GameException("Template-Welt ist noch geladen – /mw map finish " + map.name());
-            File src = MapManager.worldFolder(map.templateWorld());
-            if (!src.isDirectory()) throw new GameException("Template-Ordner fehlt: " + src.getName());
+            Path src = MapManager.findWorldFolder(map);
+            if (src == null) throw new GameException("Template-Ordner fehlt: " + map.templateWorld()
+                    + " (gesucht in world/dimensions/minecraft/ und im Serverordner)");
+            // Neues Format → Kopie als Geschwister-Dimension; altes Format → in den Serverordner (Paper migriert beim Laden)
+            boolean newFormat = !src.toAbsolutePath().normalize().equals(MapManager.worldFolder(map.templateWorld()).toPath().toAbsolutePath().normalize());
+            Path dst = newFormat ? src.getParent().resolve(worldName) : MapManager.worldFolder(worldName).toPath();
             try {
-                copyWorld(src.toPath(), MapManager.worldFolder(worldName).toPath());
+                deleteFolder(dst.toFile());
+                copyWorld(src, dst);
             } catch (IOException e) {
                 throw new GameException("Map konnte nicht kopiert werden: " + e.getMessage());
             }
@@ -183,7 +188,9 @@ public final class Game {
         try (Stream<Path> s = Files.walk(src)) {
             for (Path p : (Iterable<Path>) s::iterator) {
                 String n = p.getFileName().toString();
-                if (n.equals("uid.dat") || n.equals("session.lock")) continue;
+                String rel = src.relativize(p).toString().replace('\\', '/');
+                // Welt-IDs nicht mitkopieren (sonst "doppelte Welt"): alt uid.dat, neu data/paper/metadata.dat
+                if (n.equals("uid.dat") || n.equals("session.lock") || rel.endsWith("data/paper/metadata.dat")) continue;
                 Path target = dst.resolve(src.relativize(p).toString());
                 if (Files.isDirectory(p)) Files.createDirectories(target);
                 else Files.copy(p, target);
@@ -685,7 +692,7 @@ public final class Game {
                 }
                 if (r == Missile.Result.EXPLODED && m.owner() != null) {
                     Team defender = map.forward(Team.GREEN) == m.dir() ? Team.RED : Team.GREEN;
-                    if (Math.abs(map.portal(defender).centerZ() - m.frontZ()) <= 10) {
+                    if (Math.abs(map.along(map.portal(defender)) - m.frontAlong()) <= 10) {
                         lastPortalHitter.put(defender, m.owner().getUniqueId());
                     }
                 }
@@ -807,7 +814,8 @@ public final class Game {
         BlockFace f = p.getTargetBlockFace(5);
         if (target != null && f != null) return target.getRelative(f);
         Team t = team(p);
-        return p.getLocation().getBlock().getRelative(0, 0, (t == null ? 1 : map.forward(t)) * 2);
+        int f = (t == null ? 1 : map.forward(t)) * 2;
+        return map.axisX() ? p.getLocation().getBlock().getRelative(f, 0, 0) : p.getLocation().getBlock().getRelative(0, 0, f);
     }
 
     private void updatePreviews() {
@@ -863,16 +871,17 @@ public final class Game {
         Team shooter = map.forward(Team.GREEN) == m.dir() ? Team.GREEN : Team.RED;
         Team defender = shooter.other();
         MapConfig.Box portal = map.portal(defender);
-        if (Math.abs(portal.centerZ() - m.frontZ()) > dist) return;
+        if (Math.abs(map.along(portal) - m.frontAlong()) > dist) return;
         // nur warnen, wenn die Rakete grob aufs Portal zielt
-        if (m.centerX() < portal.minX() - 6 || m.centerX() > portal.maxX() + 7) return;
+        if (m.centerLateral() < map.lateralMin(portal) - 6 || m.centerLateral() > map.lateralMax(portal) + 7) return;
         m.markWarned();
         long now = System.currentTimeMillis();
         Long last = lastWarning.get(defender);
         if (last != null && now - last < 2500) return; // nicht spammen
         lastWarning.put(defender, now);
-        // aus Sicht des Verteidigers (Blick zum Gegner): rechts = -X bei Blick +Z, +X bei Blick -Z
-        double rel = (m.centerX() - portal.centerX()) * -map.forward(defender);
+        // Rechts aus Sicht des Verteidigers (Blick zum Gegner): Z-Achse → -X bei +Z; X-Achse → +Z bei +X
+        int fd = map.forward(defender);
+        double rel = (m.centerLateral() - map.lateralCenter(portal)) * (map.axisX() ? fd : -fd);
         String side = rel > 3 ? "rechts" : rel < -3 ? "links" : "mittig";
         for (Player p : teamPlayers(defender)) {
             p.showTitle(Title.title(Msg.mm("<bad><bold>⚠ Rakete!"),
@@ -941,16 +950,19 @@ public final class Game {
     /** Wo würde die Rakete landen, und ist das erlaubt? (für Spawn & Vorschau) */
     public Placement placement(Team t, MissileType type, Block origin) {
         int dir = map.forward(t);
-        double mid = map.midZ();
-        double ownPortalZ = map.portal(t).centerZ();
+        boolean ax = map.axisX();
+        double mid = map.midAlong();
+        double ownPortal = map.along(map.portal(t));
         boolean ownHalf = plugin.getConfig().getBoolean("missile.own-half-only", true);
         Map<Missile.Pos, Material> parts = new LinkedHashMap<>();
         Map<Missile.Pos, BlockData> datas = new LinkedHashMap<>();
         String error = null;
         for (MissileType.Part part : type.parts()) {
-            int wx = origin.getX() + (dir > 0 ? part.x() : -part.x());
+            // lokal (x = seitlich, z = vorne) → Welt; Drehung, keine Spiegelung
+            int wx = ax ? origin.getX() + dir * part.z() : origin.getX() + dir * part.x();
             int wy = origin.getY() + part.y();
-            int wz = origin.getZ() + dir * part.z();
+            int wz = ax ? origin.getZ() - dir * part.x() : origin.getZ() + dir * part.z();
+            int wa = ax ? wx : wz;
             Missile.Pos pos = new Missile.Pos(wx, wy, wz);
             Material mat = part.material() == MissileType.TEAM_ACCENT ? t.accent() : part.material();
             parts.put(pos, mat);
@@ -962,15 +974,19 @@ public final class Game {
             Block b = world.getBlockAt(wx, wy, wz);
             if (!b.getType().isAir() && !b.isLiquid()) {
                 error = "Hier ist kein Platz für die Rakete.";
-            } else if (ownHalf && dir * (wz + 0.5 - mid) > 0) {
+            } else if (ownHalf && dir * (wa + 0.5 - mid) > 0) {
                 error = "Raketen nur auf deiner Hälfte spawnen!";
-            } else if (dir * (wz + 0.5 - ownPortalZ) <= 0) {
+            } else if (dir * (wa + 0.5 - ownPortal) <= 0) {
                 error = "Nicht hinter dem eigenen Portal!";
             }
             BlockData data = mat.createBlockData();
             if (part.facing() != null && data instanceof Directional d) {
-                BlockFace f = part.facing();
-                if (dir < 0 && f != BlockFace.UP && f != BlockFace.DOWN) f = f.getOppositeFace();
+                BlockFace fwd = ax ? (dir > 0 ? BlockFace.EAST : BlockFace.WEST) : (dir > 0 ? BlockFace.SOUTH : BlockFace.NORTH);
+                BlockFace f = switch (part.facing()) {
+                    case SOUTH -> fwd;
+                    case NORTH -> fwd.getOppositeFace();
+                    default -> part.facing();
+                };
                 if (d.getFaces().contains(f)) d.setFacing(f);
             }
             datas.put(pos, data);
@@ -1008,16 +1024,15 @@ public final class Game {
         }
         plugin.preview().hide(p);
 
-        double enemyPortalZ = map.portal(t.other()).centerZ();
-        double removeBeyond = enemyPortalZ + dir * 12;
+        double removeBeyond = map.along(map.portal(t.other())) + dir * 12;
         int speed = plugin.getConfig().getInt("missile.speed." + type.id(), 4);
         Missile.Settings settings = new Missile.Settings() {
             public int fuseTicks() { return plugin.getConfig().getInt("missile.fuse-ticks", 60); }
             public int maxSteps() { return plugin.getConfig().getInt("missile.max-steps", 260); }
             public int pierceGlassMax() { return plugin.getConfig().getInt("missile.pierce-glass-max", 12); }
-            public double removeBeyondZ() { return removeBeyond; }
+            public double removeBeyond() { return removeBeyond; }
         };
-        missiles.add(new Missile(world, type, dir, speed, p, parts, settings));
+        missiles.add(new Missile(world, type, map.axisX(), dir, speed, p, parts, settings));
         round(p.getUniqueId())[2]++;
         plugin.stats().add(p, Stat.MISSILES, 1);
         world.playSound(origin.getLocation(), Sound.BLOCK_PISTON_EXTEND, 1f, 0.7f);

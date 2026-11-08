@@ -34,7 +34,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class Missile {
 
     public record Pos(int x, int y, int z) {
-        Pos shift(int dz) { return new Pos(x, y, z + dz); }
+        Pos shift(int dx, int dz) { return new Pos(x + dx, y, z + dz); }
     }
 
     public enum Result { FLYING, STOPPED, EXPLODED, REMOVED }
@@ -43,13 +43,16 @@ public final class Missile {
         int fuseTicks();
         int maxSteps();
         int pierceGlassMax();
-        /** Z hinter dem gegnerischen Portal – ab hier wird die Rakete entfernt. */
-        double removeBeyondZ();
+        /** Koordinate (entlang der Flugachse) hinter dem gegnerischen Portal – ab hier wird die Rakete entfernt. */
+        double removeBeyond();
     }
 
     private final World world;
     private final MissileType type;
     private final int dir;
+    /** Flugachse: true = X, false = Z. */
+    private final boolean axisX;
+    private final int dx, dz;
     private final int ticksPerStep;
     private final Player owner;
     private final Settings settings;
@@ -59,11 +62,14 @@ public final class Missile {
     private int steps;
     private int pierced;
 
-    public Missile(World world, MissileType type, int dir, int ticksPerStep, Player owner,
+    public Missile(World world, MissileType type, boolean axisX, int dir, int ticksPerStep, Player owner,
                    Map<Pos, Material> parts, Settings settings) {
         this.world = world;
         this.type = type;
         this.dir = dir;
+        this.axisX = axisX;
+        this.dx = axisX ? dir : 0;
+        this.dz = axisX ? 0 : dir;
         this.ticksPerStep = Math.max(1, ticksPerStep);
         this.owner = owner;
         this.parts = parts;
@@ -77,9 +83,10 @@ public final class Missile {
         int front = dir > 0 ? Integer.MIN_VALUE : Integer.MAX_VALUE;
         double sx = 0, sy = 0;
         for (Pos p : positions) {
-            rear = dir > 0 ? Math.min(rear, p.z()) : Math.max(rear, p.z());
-            front = dir > 0 ? Math.max(front, p.z()) : Math.min(front, p.z());
-            sx += p.x();
+            int a = along(p);
+            rear = dir > 0 ? Math.min(rear, a) : Math.max(rear, a);
+            front = dir > 0 ? Math.max(front, a) : Math.min(front, a);
+            sx += lateral(p);
             sy += p.y();
         }
         if (positions.isEmpty()) return rear;
@@ -87,6 +94,19 @@ public final class Missile {
         centerX = sx / positions.size() + 0.5;
         centerY = sy / positions.size() + 0.5;
         return rear;
+    }
+
+    private int along(Pos p) {
+        return axisX ? p.x() : p.z();
+    }
+
+    private int lateral(Pos p) {
+        return axisX ? p.z() : p.x();
+    }
+
+    /** Weltposition aus (entlang, seitlich, y). */
+    private Location at(double alongC, double latC, double y) {
+        return axisX ? new Location(world, alongC, y, latC) : new Location(world, latC, y, alongC);
     }
 
     private boolean warned;
@@ -101,11 +121,13 @@ public final class Missile {
         return dir;
     }
 
-    public int frontZ() {
+    /** Front-Koordinate entlang der Flugachse. */
+    public int frontAlong() {
         return frontZ;
     }
 
-    public double centerX() {
+    /** Mitte quer zur Flugachse. */
+    public double centerLateral() {
         return centerX;
     }
 
@@ -152,7 +174,7 @@ public final class Missile {
         Set<Pos> occupied = current.keySet();
         List<Block> obstacles = new ArrayList<>();
         for (Pos p : occupied) {
-            Pos n = p.shift(dir);
+            Pos n = p.shift(dx, dz);
             if (occupied.contains(n)) continue;
             Block nb = world.getBlockAt(n.x(), n.y(), n.z());
             if (!nb.getType().isAir()) obstacles.add(nb);
@@ -168,22 +190,22 @@ public final class Missile {
         }
 
         // 3) außerhalb der Arena? → weg damit
-        int frontZ = dir > 0 ? Integer.MIN_VALUE : Integer.MAX_VALUE;
-        for (Pos p : occupied) frontZ = dir > 0 ? Math.max(frontZ, p.z()) : Math.min(frontZ, p.z());
-        if (dir * (frontZ - settings.removeBeyondZ()) > 0) {
+        int front = dir > 0 ? Integer.MIN_VALUE : Integer.MAX_VALUE;
+        for (Pos p : occupied) front = dir > 0 ? Math.max(front, along(p)) : Math.min(front, along(p));
+        if (dir * (front - settings.removeBeyond()) > 0) {
             for (Pos p : occupied) world.getBlockAt(p.x(), p.y(), p.z()).setType(Material.AIR, false);
             return Result.REMOVED;
         }
 
         // 4) bewegen: alte Blöcke leeren, neue setzen (ohne Physik)
         Set<Pos> next = new HashSet<>();
-        for (Pos p : occupied) next.add(p.shift(dir));
+        for (Pos p : occupied) next.add(p.shift(dx, dz));
         for (Pos p : occupied) {
             if (!next.contains(p)) world.getBlockAt(p.x(), p.y(), p.z()).setType(Material.AIR, false);
         }
         Map<Pos, Material> moved = new HashMap<>();
         for (Map.Entry<Pos, BlockData> e : current.entrySet()) {
-            Pos n = e.getKey().shift(dir);
+            Pos n = e.getKey().shift(dx, dz);
             world.getBlockAt(n.x(), n.y(), n.z()).setBlockData(e.getValue(), false);
             moved.put(n, expected.get(e.getKey()));
         }
@@ -206,11 +228,12 @@ public final class Missile {
         }
         // Mitfahr-Raketen nehmen Spieler oben drauf mit, alle anderen schieben nur, wer im Weg steht
         double top = type.rideable() ? maxY + 2.2 : maxY + 0.99;
-        BoundingBox box = new BoundingBox(minX - 0.3, minY, minZ, maxX + 1.3, top, maxZ + 1);
+        double padX = axisX ? 0 : 0.3, padZ = axisX ? 0.3 : 0;
+        BoundingBox box = new BoundingBox(minX - padX, minY, minZ - padZ, maxX + 1 + padX, top, maxZ + 1 + padZ);
         for (Entity e : world.getNearbyEntities(box, en -> en instanceof Player)) {
             Player p = (Player) e;
             if (p.getGameMode() == org.bukkit.GameMode.SPECTATOR) continue;
-            Location to = p.getLocation().add(0, 0, dir);
+            Location to = p.getLocation().add(dx, 0, dz);
             p.teleport(to);
         }
     }
@@ -218,7 +241,7 @@ public final class Missile {
     /** Partikelspur am Heck + leises Antriebsgeräusch; merkt sich Front/Mitte für die Warnung. */
     private void effects(Set<Pos> positions) {
         int rear = track(positions);
-        Location tail = new Location(world, centerX, centerY, rear + 0.5 - dir * 0.8);
+        Location tail = at(rear + 0.5 - dir * 0.8, centerX, centerY);
         world.spawnParticle(Particle.FLAME, tail, 4, 0.2, 0.2, 0.1, 0.01);
         world.spawnParticle(Particle.CLOUD, tail, 2, 0.2, 0.2, 0.1, 0.01);
         if (steps % 3 == 0) world.playSound(tail, Sound.BLOCK_PISTON_EXTEND, 0.35f, 1.6f);
@@ -227,7 +250,7 @@ public final class Missile {
     private void detonate(Map<Pos, BlockData> current) {
         ThreadLocalRandom r = ThreadLocalRandom.current();
         // Einschlag-Effekt an der Front
-        Location impact = new Location(world, centerX, centerY, frontZ + 0.5 + dir * 0.6);
+        Location impact = at(frontZ + 0.5 + dir * 0.6, centerX, centerY);
         world.spawnParticle(Particle.ELECTRIC_SPARK, impact, 40, 0.6, 0.6, 0.3, 0.15);
         world.spawnParticle(Particle.LAVA, impact, 8, 0.4, 0.4, 0.2, 0);
         world.playSound(impact, Sound.ENTITY_TNT_PRIMED, 1.4f, 0.8f);

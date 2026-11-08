@@ -152,7 +152,7 @@ Dann bauen und einrichten:
 ```
 `/mw map tp <name>` holt dich zum Weiterbauen zurück (Map ist dann bis zum nächsten `finish` gesperrt).
 
-Wichtig bei eigenen Maps: Die Teams müssen sich **auf der Z-Achse** gegenüberstehen, die Portale quer dazu (Achse X). Netherportale sind in Vanilla max. 21 × 21 groß.
+Bei eigenen Maps dürfen sich die Teams auf der **X- oder Z-Achse** gegenüberstehen – die Richtung wird aus den Portalen erkannt (`/mw map info` zeigt sie). Template-Welten werden im Paper-26-Format (`world/dimensions/minecraft/<name>`) gefunden und für jede Runde kopiert.
 
 ## Config
 

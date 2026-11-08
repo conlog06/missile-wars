@@ -14,7 +14,7 @@ import java.util.Map;
  * GENERATED – Arena wird für jede Runde frisch generiert (kein Welt-Ordner nötig).
  * WORLD     – eigene Welt (Template), wird für jede Runde kopiert.
  *
- * Achse: Die Teams stehen sich entlang der Z-Achse gegenüber.
+ * Achse: Die Teams stehen sich entlang der X- oder Z-Achse gegenüber (automatisch erkannt).
  */
 public final class MapConfig {
 
@@ -43,6 +43,8 @@ public final class MapConfig {
     private final String name;
     private Type type;
     private String templateWorld;
+    /** Tatsächlicher Ordner der Template-Welt (Paper 26: world/dimensions/minecraft/<name>). */
+    private String folder;
     private int distance;
     private boolean ready;
     private int deathY;
@@ -59,6 +61,8 @@ public final class MapConfig {
     public void type(Type t) { this.type = t; }
     public String templateWorld() { return templateWorld; }
     public void templateWorld(String w) { this.templateWorld = w; }
+    public String folder() { return folder; }
+    public void folder(String f) { this.folder = f; }
     public int distance() { return distance; }
     public void distance(int d) { this.distance = d; }
     public boolean ready() { return ready; }
@@ -74,16 +78,37 @@ public final class MapConfig {
         return spawns.size() == 2 && portals.size() == 2;
     }
 
-    /** +1 oder -1: in welche Z-Richtung die Raketen dieses Teams fliegen. */
-    public int forward(Team t) {
-        Box own = portals.get(t);
-        Box enemy = portals.get(t.other());
-        return enemy.centerZ() >= own.centerZ() ? 1 : -1;
+    /** Flugachse: true = Teams stehen sich auf der X-Achse gegenüber, false = Z-Achse. */
+    public boolean axisX() {
+        Box g = portals.get(Team.GREEN), r = portals.get(Team.RED);
+        return Math.abs(g.centerX() - r.centerX()) > Math.abs(g.centerZ() - r.centerZ());
     }
 
-    /** Z-Koordinate der Mittellinie. */
-    public double midZ() {
-        return (portals.get(Team.GREEN).centerZ() + portals.get(Team.RED).centerZ()) / 2.0;
+    /** Koordinate entlang der Flugachse. */
+    public double along(Box b) {
+        return axisX() ? b.centerX() : b.centerZ();
+    }
+
+    public double lateralCenter(Box b) {
+        return axisX() ? b.centerZ() : b.centerX();
+    }
+
+    public int lateralMin(Box b) {
+        return axisX() ? b.minZ() : b.minX();
+    }
+
+    public int lateralMax(Box b) {
+        return axisX() ? b.maxZ() : b.maxX();
+    }
+
+    /** +1 oder -1: in welche Richtung (entlang der Achse) die Raketen dieses Teams fliegen. */
+    public int forward(Team t) {
+        return along(portals.get(t.other())) >= along(portals.get(t)) ? 1 : -1;
+    }
+
+    /** Mittellinie entlang der Flugachse. */
+    public double midAlong() {
+        return (along(portals.get(Team.GREEN)) + along(portals.get(Team.RED))) / 2.0;
     }
 
     /** Mittelpunkt zum Zuschauen. */
@@ -91,8 +116,9 @@ public final class MapConfig {
         Box g = portals.get(Team.GREEN);
         Box r = portals.get(Team.RED);
         double x = (g.centerX() + r.centerX()) / 2.0;
+        double z = (g.centerZ() + r.centerZ()) / 2.0;
         double y = Math.max(g.maxY(), r.maxY()) + 6;
-        return new Location(w, x, y, midZ(), 90f, 30f);
+        return new Location(w, x + 0.5, y, z + 0.5, axisX() ? 0f : 90f, 30f);
     }
 
     // ── Speichern / Laden ────────────────────────────────────────────
@@ -100,6 +126,7 @@ public final class MapConfig {
     public void save(YamlConfiguration y) {
         y.set("type", type.name());
         y.set("world", templateWorld);
+        y.set("folder", folder);
         y.set("distance", distance);
         y.set("ready", ready);
         y.set("death-y", deathY);
@@ -129,6 +156,7 @@ public final class MapConfig {
         }
         MapConfig m = new MapConfig(name, type);
         m.templateWorld = y.getString("world");
+        m.folder = y.getString("folder");
         m.distance = y.getInt("distance", 60);
         m.ready = y.getBoolean("ready", false);
         m.deathY = y.getInt("death-y", 30);

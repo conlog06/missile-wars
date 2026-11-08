@@ -98,4 +98,27 @@ public final class MapManager {
     public static File worldFolder(String worldName) {
         return new File(Bukkit.getWorldContainer(), worldName);
     }
+
+    /** Neues Paper-26-Format: <hauptwelt>/dimensions/minecraft/<name>. */
+    public static java.nio.file.Path dimensionFolder(String worldName) {
+        return Bukkit.getServer().getLevelDirectory().resolve("dimensions").resolve("minecraft")
+                .resolve(worldName.toLowerCase(java.util.Locale.ENGLISH).replace(' ', '_'));
+    }
+
+    /** Ordner einer (nicht geladenen) Welt finden: gemerkter Pfad → neues Format → altes Format. */
+    public static java.nio.file.Path findWorldFolder(MapConfig m) {
+        if (m.folder() != null && !m.folder().isBlank()) {
+            java.nio.file.Path p = java.nio.file.Path.of(m.folder());
+            if (java.nio.file.Files.isDirectory(p)) return p;
+        }
+        java.nio.file.Path dim = dimensionFolder(m.templateWorld());
+        if (java.nio.file.Files.isDirectory(dim)) return dim;
+        File legacy = worldFolder(m.templateWorld());
+        return legacy.isDirectory() ? legacy.toPath() : null;
+    }
+
+    /** Ob ein Weltname existiert (neues oder altes Format). */
+    public static boolean worldExists(String worldName) {
+        return java.nio.file.Files.isDirectory(dimensionFolder(worldName)) || worldFolder(worldName).isDirectory();
+    }
 }

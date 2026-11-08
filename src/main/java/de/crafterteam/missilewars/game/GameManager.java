@@ -117,9 +117,13 @@ public final class GameManager {
 
     /** Übrig gebliebene Spielwelten (Absturz) beim Start aufräumen. */
     public void cleanupLeftovers() {
-        File[] dirs = Bukkit.getWorldContainer().listFiles(f -> f.isDirectory() && f.getName().startsWith(Game.WORLD_PREFIX));
-        if (dirs == null) return;
-        for (File d : dirs) {
+        java.util.List<File> all = new java.util.ArrayList<>();
+        File[] legacy = Bukkit.getWorldContainer().listFiles(f -> f.isDirectory() && f.getName().startsWith(Game.WORLD_PREFIX));
+        if (legacy != null) all.addAll(java.util.List.of(legacy));
+        File dimDir = Bukkit.getServer().getLevelDirectory().resolve("dimensions").resolve("minecraft").toFile();
+        File[] dims = dimDir.listFiles(f -> f.isDirectory() && f.getName().startsWith(Game.WORLD_PREFIX));
+        if (dims != null) all.addAll(java.util.List.of(dims));
+        for (File d : all) {
             if (Bukkit.getWorld(d.getName()) != null) continue;
             plugin.getLogger().info("Lösche alte Spielwelt " + d.getName());
             Game.deleteFolder(d);

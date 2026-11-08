@@ -322,7 +322,7 @@ public final class MwCommand implements BasicCommand {
         s.sendMessage(Msg.mm(" <acc>/mw map tp <name></acc> <mut>– in die Template-Welt"));
         s.sendMessage(Msg.mm(" <acc>/mw map finish <name></acc> <mut>– fertig, Welt entladen"));
         s.sendMessage(Msg.mm(" <acc>/mw map info|delete <name>"));
-        s.sendMessage(Msg.mm(" <dim>Teams stehen sich auf der Z-Achse gegenüber."));
+        s.sendMessage(Msg.mm(" <dim>Teams dürfen sich auf der X- oder Z-Achse gegenüberstehen."));
     }
 
     private void map(CommandSender s, String[] args) {
@@ -357,7 +357,7 @@ public final class MwCommand implements BasicCommand {
                 if (!MapManager.validName(name)) { Msg.send(s, "<bad>Name: nur a-z, 0-9, _ und -"); return; }
                 boolean arena = args.length <= 3 || !args[3].equalsIgnoreCase("leer");
                 String worldName = MapManager.TEMPLATE_PREFIX + name;
-                if (MapManager.worldFolder(worldName).exists() || Bukkit.getWorld(worldName) != null) {
+                if (MapManager.worldExists(worldName) || Bukkit.getWorld(worldName) != null) {
                     Msg.send(s, "<bad>Welt " + worldName + " existiert schon – nimm /mw map import.");
                     return;
                 }
@@ -365,6 +365,7 @@ public final class MwCommand implements BasicCommand {
                 if (w == null) { Msg.send(s, "<bad>Welt konnte nicht erstellt werden."); return; }
                 MapConfig nm = new MapConfig(name, MapConfig.Type.WORLD);
                 nm.templateWorld(worldName);
+                nm.folder(w.getWorldPath().toAbsolutePath().toString());
                 if (arena) {
                     int dist = plugin.getConfig().getInt("generator.distance", 60);
                     ArenaGenerator.build(w, dist);
@@ -392,7 +393,7 @@ public final class MwCommand implements BasicCommand {
                 }
                 World w = Bukkit.getWorld(worldName);
                 if (w == null) {
-                    if (!MapManager.worldFolder(worldName).isDirectory()) {
+                    if (!MapManager.worldExists(worldName)) {
                         Msg.send(s, "<bad>Weltordner '" + Msg.esc(worldName) + "' nicht gefunden.");
                         return;
                     }
@@ -401,6 +402,7 @@ public final class MwCommand implements BasicCommand {
                 if (w == null) { Msg.send(s, "<bad>Welt konnte nicht geladen werden."); return; }
                 MapConfig nm = new MapConfig(name, MapConfig.Type.WORLD);
                 nm.templateWorld(w.getName());
+                nm.folder(w.getWorldPath().toAbsolutePath().toString());
                 nm.deathY(w.getMinHeight() + 10);
                 plugin.maps().add(nm);
                 if (s instanceof Player p) {
@@ -441,9 +443,6 @@ public final class MwCommand implements BasicCommand {
                 plugin.maps().save(m);
                 int count = (box.maxX() - box.minX() + 1) * (box.maxY() - box.minY() + 1) * (box.maxZ() - box.minZ() + 1);
                 Msg.send(s, "<ok>Portal für Team " + t.colored() + " <ok>gesetzt <mut>(~" + count + " Blöcke).");
-                if (box.maxZ() != box.minZ()) {
-                    Msg.send(s, "<acc>Hinweis: Das Portal sollte quer zur Z-Achse stehen (Teams stehen sich auf Z gegenüber).");
-                }
             }
             case "setdeathy" -> {
                 if (!checkWorldMap(s, m)) return;
@@ -464,6 +463,7 @@ public final class MwCommand implements BasicCommand {
                 }
                 if (w == null) { Msg.send(s, "<bad>Welt konnte nicht geladen werden."); return; }
                 m.ready(false);
+                m.folder(w.getWorldPath().toAbsolutePath().toString());
                 plugin.maps().save(m);
                 MapConfig.Spawn sp = m.spawn(Team.GREEN);
                 p.teleport(sp != null ? sp.toLocation(w) : w.getSpawnLocation());
@@ -477,6 +477,11 @@ public final class MwCommand implements BasicCommand {
                     return;
                 }
                 World w = Bukkit.getWorld(m.templateWorld());
+                if (w != null) m.folder(w.getWorldPath().toAbsolutePath().toString());
+                if (w == null && MapManager.findWorldFolder(m) == null) {
+                    Msg.send(s, "<bad>Welt-Ordner nicht gefunden. <mut>Lade die Map mit /mw map tp " + name + " und dann finish.");
+                    return;
+                }
                 if (w != null) {
                     Location out = plugin.lobby();
                     if (out == null || out.getWorld().equals(w)) out = Bukkit.getWorlds().getFirst().getSpawnLocation();
@@ -496,7 +501,12 @@ public final class MwCommand implements BasicCommand {
             case "info" -> {
                 if (m == null) { Msg.send(s, "<bad>Map nicht gefunden."); return; }
                 Msg.send(s, "<txt>Map " + name + " <dim>[" + m.type() + "]");
-                if (m.type() == MapConfig.Type.WORLD) s.sendMessage(Msg.mm(" <mut>Welt: <txt>" + Msg.esc(String.valueOf(m.templateWorld()))));
+                if (m.type() == MapConfig.Type.WORLD) {
+                    s.sendMessage(Msg.mm(" <mut>Welt: <txt>" + Msg.esc(String.valueOf(m.templateWorld()))));
+                    java.nio.file.Path f = MapManager.findWorldFolder(m);
+                    s.sendMessage(Msg.mm(" <mut>Ordner: " + (f == null ? "<bad>nicht gefunden" : "<txt>" + Msg.esc(f.toString()))));
+                    s.sendMessage(Msg.mm(" <mut>Achse: <txt>" + (m.complete() ? (m.axisX() ? "X" : "Z") : "-")));
+                }
                 else s.sendMessage(Msg.mm(" <mut>Abstand: <txt>" + m.distance()));
                 s.sendMessage(Msg.mm(" <mut>Fertig: " + (m.ready() && m.complete() ? "<ok>ja" : "<bad>nein – " + missing(m))));
                 s.sendMessage(Msg.mm(" <mut>Void-Höhe: <txt>" + m.deathY()));
