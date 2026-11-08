@@ -814,8 +814,8 @@ public final class Game {
         BlockFace f = p.getTargetBlockFace(5);
         if (target != null && f != null) return target.getRelative(f);
         Team t = team(p);
-        int f = (t == null ? 1 : map.forward(t)) * 2;
-        return map.axisX() ? p.getLocation().getBlock().getRelative(f, 0, 0) : p.getLocation().getBlock().getRelative(0, 0, f);
+        int step = (t == null ? 1 : map.forward(t)) * 2;
+        return map.axisX() ? p.getLocation().getBlock().getRelative(step, 0, 0) : p.getLocation().getBlock().getRelative(0, 0, step);
     }
 
     private void updatePreviews() {
