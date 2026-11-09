@@ -100,6 +100,7 @@ public final class Game {
     private final Map<Team, Long> lastWarning = new EnumMap<>(Team.class);
     private final Map<Team, UUID> lastPortalHitter = new EnumMap<>(Team.class);
     private final Map<Team, Integer> teamPoints = new EnumMap<>(Team.class);
+    private final Map<Team, Double> glassPointFrac = new EnumMap<>(Team.class);
     private final Map<Team, Map<TeamUpgrade, Integer>> upgrades = new EnumMap<>(Team.class);
     private final Map<Team, Map<Block, BlockData>> baseGlass = new EnumMap<>(Team.class);
     private final Map<Block, Team> portalOwner = new HashMap<>();
@@ -201,7 +202,8 @@ public final class Game {
             boolean ax = map.axisX();
             int latMin = map.lateralMin(b) - 8, latMax = map.lateralMax(b) + 8;
             int along = (int) Math.floor(map.along(b));
-            for (int a = along - 22; a <= along + 22; a++) {
+            int range = Math.max(22, ArenaGenerator.front(layers) + 4);   // bei 32 Schichten reicht das Glas weiter
+            for (int a = along - range; a <= along + range; a++) {
                 for (int l = latMin; l <= latMax; l++) {
                     for (int y = b.minY() - 5; y <= b.maxY() + 5; y++) {
                         Block bl = ax ? world.getBlockAt(a, y, l) : world.getBlockAt(l, y, a);
@@ -307,7 +309,11 @@ public final class Game {
             } else if (st != null && b.getType().name().contains("GLASS")) {
                 Team other = st.other();
                 if (baseGlass.containsKey(other) && baseGlass.get(other).containsKey(b)) {
-                    addTeamPoints(st, 1);
+                    // Punkte pro Glasblock an die Glasdicke anpassen: 15 Schichten = 1 Punkt, 32 Schichten ≈ 0,47
+                    double frac = glassPointFrac.getOrDefault(st, 0.0) + ArenaGenerator.DEFAULT_LAYERS / (double) Math.max(layers, ArenaGenerator.DEFAULT_LAYERS);
+                    int whole = (int) frac;
+                    glassPointFrac.put(st, frac - whole);
+                    addTeamPoints(st, whole);
                     roundGlass.merge(src.getUniqueId(), 1, Integer::sum);
                 }
             }
@@ -527,6 +533,16 @@ public final class Game {
             broadcast(Msg.esc(p.getName()) + " hat die Runde verlassen.");
         }
         if (teams.isEmpty() && state != State.ENDING) {
+            // Queue-Modus: leere Lobby bleibt offen (kein ständiges Welt-Neubauen), nur Status zurücksetzen
+            if (plugin.games().singleGame() && (state == State.WAITING || state == State.COUNTDOWN) && !transferring) {
+                state = State.WAITING;
+                readyTriggered = false;
+                forcedStart = false;
+                readyTimer = -1;
+                ready.clear();
+                updateBoard();
+                return;
+            }
             shutdown();
             return;
         }
@@ -648,6 +664,8 @@ public final class Game {
         portalBlocks.clear();
         portalOwner.clear();
         portalData.clear();
+        baseGlass.clear();
+        destroyOrder.clear();
         scanPortals();
         broadcast("<acc>Abstimmung: <txt>" + layers + " Blöcke Schutzglas <mut>vor jedem Portal.");
     }
@@ -702,6 +720,13 @@ public final class Game {
 
     /** Alle Spieler (mit gespeicherten Inventaren) in eine neue Runde umziehen, diese Runde auflösen. */
     private void transferTo(Game ng) {
+        // Bereit-Status, Glas-Stimmen usw. mitnehmen (vorher ging "Bereit" beim Map-Wechsel verloren)
+        ng.ready.addAll(ready);
+        ng.readyTriggered = readyTriggered;
+        ng.forcedStart = forcedStart;
+        ng.readyTimer = readyTimer;
+        ng.layerVotes.putAll(layerVotes);
+        ng.vipStartUsed = vipStartUsed;
         for (Map.Entry<UUID, Team> e : new ArrayList<>(teams.entrySet())) {
             Player p = Bukkit.getPlayer(e.getKey());
             if (p == null) continue;
@@ -959,6 +984,8 @@ public final class Game {
     }
 
     private void start() {
+        // Queue-Modus: sofort die nächste Lobby öffnen, damit neue Spieler nicht warten müssen
+        Bukkit.getScheduler().runTaskLater(plugin, () -> plugin.games().ensureOpenLobby(), 40L);
         for (Player p : players()) {
             p.setLevel(0);
             p.setExp(0f);

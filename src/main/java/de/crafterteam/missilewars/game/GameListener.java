@@ -289,6 +289,48 @@ public final class GameListener implements Listener {
         if (e.getView().getTopInventory().getHolder() instanceof de.crafterteam.missilewars.gui.Gui) e.setCancelled(true);
     }
 
+    // ── Inventar-Sperre: Lobby komplett fest, im Spiel nur Bogen, Shop & Rüstung ──
+
+    private boolean lockedItem(ItemStack it) {
+        if (it == null || it.getType().isAir()) return false;
+        String id = plugin.items().idOf(it);
+        return (id != null && id.startsWith("menu_")) || it.getType() == Material.BOW;
+    }
+
+    /** true = Spieler darf in seinem Inventar gar nichts verschieben (Wartelobby, Zuschauer, Rundenende). */
+    private boolean fullyLocked(Player p, Game g) {
+        if (p.getGameMode() == org.bukkit.GameMode.CREATIVE && plugin.staff().isStaff(p)) return false;
+        return g.state() != Game.State.RUNNING || g.team(p) == null;
+    }
+
+    @EventHandler(priority = EventPriority.LOW)
+    public void onInventoryLock(InventoryClickEvent e) {
+        if (!(e.getWhoClicked() instanceof Player p)) return;
+        if (e.getView().getTopInventory().getHolder() instanceof de.crafterteam.missilewars.gui.Gui) return;
+        Game g = gameOf(p);
+        if (g == null) return;
+        if (fullyLocked(p, g)) {
+            e.setCancelled(true);
+            return;
+        }
+        if (p.getGameMode() == org.bukkit.GameMode.CREATIVE && plugin.staff().isStaff(p)) return;
+        boolean lock = e.getSlotType() == org.bukkit.event.inventory.InventoryType.SlotType.ARMOR
+                || lockedItem(e.getCurrentItem()) || lockedItem(e.getCursor());
+        if (!lock && e.getClick() == org.bukkit.event.inventory.ClickType.NUMBER_KEY && e.getHotbarButton() >= 0)
+            lock = lockedItem(p.getInventory().getItem(e.getHotbarButton()));
+        if (!lock && e.getClick() == org.bukkit.event.inventory.ClickType.SWAP_OFFHAND)
+            lock = lockedItem(p.getInventory().getItemInOffHand());
+        if (lock) e.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.LOW)
+    public void onInventoryDragLock(InventoryDragEvent e) {
+        if (!(e.getWhoClicked() instanceof Player p)) return;
+        Game g = gameOf(p);
+        if (g == null) return;
+        if (fullyLocked(p, g) || lockedItem(e.getOldCursor())) e.setCancelled(true);
+    }
+
     // ── Join-Schilder ────────────────────────────────────────────────
 
     @EventHandler(ignoreCancelled = true)

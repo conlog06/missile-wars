@@ -108,6 +108,7 @@ public final class MissileWarsPlugin extends JavaPlugin {
         MwCommand cmd = new MwCommand(this);
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event ->
                 event.registrar().register("mw", "Missile Wars", List.of("missilewars", "missiles"), cmd));
+        Bukkit.getScheduler().runTaskLater(this, () -> games.ensureOpenLobby(), 60L);   // erste Lobby vorbereiten
         getLogger().info("MissileWars aktiv – " + maps.all().size() + " Map(s).");
     }
 

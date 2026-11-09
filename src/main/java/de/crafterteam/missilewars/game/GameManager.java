@@ -137,6 +137,7 @@ public final class GameManager {
     void remove(Game g) {
         games.values().remove(g);
         byPlayer.values().removeIf(x -> x == g);
+        if (plugin.isEnabled()) Bukkit.getScheduler().runTaskLater(plugin, this::ensureOpenLobby, 40L);
     }
 
     /** Start-Map für eine neue Lobby: start-map oder zufällig, bevorzugt eine, die gerade nicht läuft. */
@@ -154,6 +155,26 @@ public final class GameManager {
         }
         java.util.List<MapConfig> pool = free.isEmpty() ? ready : free;
         return pool.isEmpty() ? null : pool.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(pool.size()));
+    }
+
+    /** Queue-Modus: gibt es keine offene Lobby (und ist noch Platz), wird eine neue geöffnet. */
+    public void ensureOpenLobby() {
+        if (!plugin.isEnabled() || !singleGame() || openLobby() != null || activeCount() >= maxGames()) return;
+        MapConfig map = pickMap();
+        if (map == null) return;
+        try {
+            Game g = create(map);
+            de.crafterteam.missilewars.util.Msg.broadcastLobby(plugin, "<ok>Neue Lobby <txt>#" + g.id()
+                    + " <mut>ist offen <dim>(" + map.name() + ") <mut>– <acc>/mw lobbys");
+            // Spieler ohne Runde (z. B. nach dem Rundenende) direkt hinein
+            if (plugin.serverMode().autoJoin()) {
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    if (get(p) == null && !plugin.staff().isStaff(p)) g.join(p);
+                }
+            }
+        } catch (GameException e) {
+            plugin.getLogger().warning("Neue Lobby konnte nicht erstellt werden: " + e.getMessage());
+        }
     }
 
     /** Spieler in eine andere Runde wechseln lassen (Lobby-Auswahl). */

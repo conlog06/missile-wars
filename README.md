@@ -22,6 +22,12 @@ Alte Clients (1.8 / 1.12) kommen per **ViaVersion + ViaBackwards** auf den Serve
 
 Die Raketen werden vom Plugin bewegt (wie Flugmaschinen, aber ohne echtes Redstone) – das läuft stabil, ohne Lag und unabhängig von Redstone-Änderungen in neuen Versionen.
 
+## 2.6.1
+- **Fix Bereit:** Beim Map-Wechsel durch die Abstimmung ging der Bereit-Status verloren (man musste nochmal drücken) – wird jetzt übernommen.
+- **Neue Lobby automatisch:** Startet eine Runde, öffnet sich sofort die nächste Lobby (bis `queues.max-games`). Leere Lobbys bleiben offen.
+- **Fix Teampunkte bei 24/32 Schichten:** alles Glas wird erkannt, Punkte pro Block an die Glasdicke angepasst (32 Schichten ≈ 0,5 Punkte pro Block).
+- **Inventar-Sperre:** Lobby-Items lassen sich nicht mehr verschieben; im Spiel bleiben Bogen, Runden-Shop und Rüstung fest, der Rest ist frei.
+
 ## Neu in 2.6.0
 - **Mehrere Lobbys** – standardmäßig 2 Runden gleichzeitig (`queues.max-games`). Spieler kommen automatisch in die offene Lobby; startet sie, öffnet die nächste. Wechseln per Menü oder `/mw lobbys`.
 - **Neue Start-Logik** – ab 2 Spielern startet die Runde, sobald alle **Bereit** drücken (kein Timer). Ab 4 Spielern läuft ein 60-s-Timer, alle bereit = sofort los.
