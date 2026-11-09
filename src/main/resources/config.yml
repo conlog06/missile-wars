@@ -2,7 +2,7 @@
 #  MissileWars – Konfiguration
 # ─────────────────────────────────────────────
 
-config-version: 7
+config-version: 8
 
 # ── Einzelspiel ─────────────────────────────────────────────────
 # Es gibt immer nur EINE Runde. Spieler kommen beim Joinen automatisch rein,
@@ -95,11 +95,23 @@ daily:
   per-day: 15
 map-rating: true          # nach der Runde Map bewerten (👍/👎)
 
-# ── Bereit-Pflicht ──────────────────────────────────────────────
-ready:
-  required-up-to: 100     # Runde startet nur, wenn alle "Bereit" drücken (kein Auto-Start)
-  timeout: 60             # AFK-Check: wer in dieser Zeit nicht bereit ist, fliegt aus der Runde
-  timeout-action: leave   # leave = aus der Runde, kick = vom Server, lobby-server = auf den Bungee-Lobby-Server
+# ── Mehrere Runden / Lobbys ─────────────────────────────────────
+# Spieler landen automatisch in der offenen Lobby. Startet sie, öffnet beim nächsten Spieler eine neue.
+queues:
+  max-games: 2            # so viele Runden gleichzeitig (wartend + laufend)
+
+# ── Join-/Leave-Nachrichten (MiniMessage; {player} {rank} {online} {max}, first-join zusätzlich {unique}) ──
+join-messages:
+  enabled: true
+  join: '<dim>[<ok>+</ok>]</dim> {rank}<txt>{player} <dim>({online}/{max})'
+  first-join: '<dim>[<ok>+</ok>]</dim> {rank}<txt>{player} <acc>ist zum ersten Mal da – willkommen! <dim>(#{unique})'
+  quit: '<dim>[<bad>-</bad>]</dim> {rank}<txt>{player}'
+  welcome-title: true
+  motd:
+    - '<dim>━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+    - '  <logo> <dim>| <mut>Raketen, Portale, Chaos'
+    - '  <mut>Drück <ok>Bereit<mut>, sobald du spielen willst. <dim>/mw lobbys'
+    - '<dim>━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
 
 # ── Glasdicke-Abstimmung (Wartelobby) ───────────────────────────
 glass-vote:
@@ -119,7 +131,8 @@ end-animation: true       # nach der Runde: Wiederholung, wie das Portal zerstö
 
 respawn-delay: 3          # Sekunden als Zuschauer nach dem Tod (0 = sofort)
 time-limit-minutes: 15    # danach gewinnt das Team mit dem intakteren Portal (0 = aus)
-afk-seconds: 60           # AFK-Spieler werden zu Zuschauern (0 = aus)
+afk-seconds: 300          # nach so vielen Sekunden ohne Bewegung: Hinweis an den Spieler (0 = aus)
+afk-action: message       # message = nur Nachricht an den Spieler, spectate = in laufender Runde zum Zuschauer
 kits: true                # Kit-Auswahl in der Wartelobby
 lobby-double-jump: true   # Doppelsprung in der Wartelobby
 team-compass: true        # Kompass zeigt auf das gegnerische Portal
@@ -137,7 +150,8 @@ players:
   allow-late-join: true   # während der Runde noch einem Team beitreten
 
 countdown:
-  normal: 20
+  auto-from: 4      # ab so vielen Spielern startet ein Timer; darunter (ab players.min) nur per "Bereit"
+  normal: 60        # Timer ab auto-from Spielern – sind alle bereit, geht's sofort los
   full: 10          # wenn die Runde voll ist
 
 # Alle X Sekunden bekommt jeder Spieler ein zufälliges Item

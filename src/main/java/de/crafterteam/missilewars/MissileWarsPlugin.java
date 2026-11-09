@@ -57,6 +57,19 @@ public final class MissileWarsPlugin extends JavaPlugin {
             getConfig().set("config-version", 7);
             getLogger().info("Config migriert: Start nur per Bereit, AFK 60 s, Runden-Shop-Preise x1,5.");
         }
+        if (cfgVersion < 8) {
+            // 2.6: mehrere Lobbys, Start-Timer erst ab 4 Spielern, AFK nur als Hinweis nach 5 Minuten
+            getConfig().set("afk-seconds", 300);
+            getConfig().set("afk-action", "message");
+            getConfig().set("countdown.normal", 60);
+            getConfig().set("countdown.auto-from", 4);
+            getConfig().set("queues.max-games", 2);
+            getConfig().set("ready.required-up-to", null);
+            getConfig().set("ready.timeout", null);
+            getConfig().set("ready.timeout-action", null);
+            getConfig().set("config-version", 8);
+            getLogger().info("Config migriert: 2 Lobbys, Timer ab 4 Spielern (60 s), AFK-Hinweis nach 5 min.");
+        }
         getConfig().options().copyDefaults(true);   // neue Optionen in alte config.yml übernehmen
         saveConfig();
         maps = new MapManager(this);

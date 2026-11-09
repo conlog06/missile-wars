@@ -127,6 +127,11 @@ public final class MwCommand implements BasicCommand {
                     if (g != null) g.toggleReady(p);
                 }
             }
+            case "lobbys", "lobbies", "runden", "queue" -> {
+                if (sender instanceof Player p) de.crafterteam.missilewars.gui.Menus.lobbies(plugin, p);
+                else for (Game g : plugin.games().all())
+                    Msg.send(sender, "#" + g.id() + " <txt>" + g.map().name() + " <dim>" + stateName(g.state()) + " · " + g.playerCount() + " Spieler");
+            }
             case "menu", "menü" -> { if (sender instanceof Player p) de.crafterteam.missilewars.gui.Menus.main(plugin, p); }
             case "teleporter", "tp" -> {
                 if (sender instanceof Player p) {
@@ -662,7 +667,7 @@ public final class MwCommand implements BasicCommand {
         List<String> out = new ArrayList<>();
         boolean admin = s.hasPermission(ADMIN);
         if (args.length == 1) {
-            out.addAll(List.of("join", "spectate", "leave", "team", "vote", "kit", "bereit", "raketen", "shop", "coins",
+            out.addAll(List.of("join", "lobbys", "spectate", "leave", "team", "vote", "kit", "bereit", "raketen", "shop", "coins",
                     "daily", "erfolge", "level", "upgrades", "menu", "teleporter", "list", "stats", "top"));
             if (s.hasPermission("missilewars.mod")) out.add("mod");
             if (s.hasPermission("missilewars.start")) out.add("start");

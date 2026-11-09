@@ -60,6 +60,12 @@ public final class Msg {
         return MM.deserialize(PREFIX + text);
     }
 
+    /** Nachricht an alle Spieler auf dem Server. */
+    public static void broadcastLobby(org.bukkit.plugin.Plugin plugin, String text) {
+        Component c = prefixed(text);
+        for (org.bukkit.entity.Player p : org.bukkit.Bukkit.getOnlinePlayers()) p.sendMessage(c);
+    }
+
     public static void send(CommandSender to, String text) {
         to.sendMessage(prefixed(text));
     }

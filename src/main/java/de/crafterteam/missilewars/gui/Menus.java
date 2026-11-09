@@ -254,12 +254,59 @@ public final class Menus {
             plugin.progression().claimDaily(p);
             p.closeInventory();
         });
+        if (plugin.games().maxGames() > 1) {
+            gui.set(20, Gui.item(Material.COMPASS, "<pri><bold>Lobby wechseln",
+                    "<mut>Du bist in Lobby <txt>#" + g.id(), "<mut>Offene Runden: <txt>" + plugin.games().all().size(), "",
+                    "<acc>» Übersicht"), p -> lobbies(plugin, p));
+        }
         if (!g.layerOptions().isEmpty()) {
             gui.set(22, Gui.item(Material.LIME_STAINED_GLASS, "<info><bold>Glasdicke abstimmen",
                     "<mut>Wie viele Blöcke Glas vor den Portalen?", "<mut>Mehr Glas = längere Runden.", "",
                     "<mut>Aktuell: <txt>" + g.layers() + " Blöcke", "", "<acc>» Abstimmen"), p -> glassVote(plugin, g, p));
         }
         gui.set(31, Gui.item(Material.BARRIER, "<bad>Schließen"), Player::closeInventory);
+        gui.open(viewer);
+    }
+
+    // ── Lobby-Auswahl (mehrere Runden gleichzeitig) ──────────────────
+
+    public static void lobbies(MissileWarsPlugin plugin, Player viewer) {
+        List<de.crafterteam.missilewars.game.Game> all = new ArrayList<>(plugin.games().all());
+        Gui gui = new Gui(4, "<logo> <dim>» <pri>Lobbys & Runden").frame();
+        de.crafterteam.missilewars.game.Game mine = plugin.games().get(viewer);
+        int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25};
+        int i = 0;
+        for (de.crafterteam.missilewars.game.Game g : all) {
+            if (i >= slots.length) break;
+            Material icon;
+            String status;
+            String action;
+            switch (g.state()) {
+                case WAITING -> { icon = Material.LIME_CONCRETE; status = "<ok>● Wartet"; action = "<acc>» Beitreten"; }
+                case COUNTDOWN -> { icon = Material.YELLOW_CONCRETE; status = "<acc>● Startet gleich"; action = "<acc>» Beitreten"; }
+                case RUNNING -> { icon = Material.RED_CONCRETE; status = "<bad>● Läuft"; action = "<info>» Zuschauen"; }
+                default -> { icon = Material.GRAY_CONCRETE; status = "<dim>● Endet"; action = "<dim>Gleich vorbei"; }
+            }
+            boolean here = g == mine;
+            ItemStack it = Gui.item(new ItemStack(icon, Math.max(1, Math.min(64, g.playerCount()))),
+                    "<pri><bold>Lobby #" + g.id() + (here ? " <ok>(du)" : ""),
+                    "<mut>Status: " + status,
+                    "<mut>Map: <txt>" + g.map().name() + " <dim>" + g.map().describe(),
+                    "<mut>Spieler: <txt>" + g.playerCount() + "<dim>/" + g.maxPlayers()
+                            + (g.spectatorCount() > 0 ? " <dim>· " + g.spectatorCount() + " Zuschauer" : ""),
+                    "", here ? "<ok>✔ Hier bist du" : action);
+            gui.set(slots[i++], here ? Gui.glow(it) : it, here ? null : p -> {
+                p.closeInventory();
+                plugin.games().switchTo(p, g);
+            });
+        }
+        if (all.isEmpty()) gui.set(13, Gui.item(Material.BARRIER, "<mut>Keine Runde offen", "<dim>Mit /mw join öffnest du eine."), null);
+        gui.set(31, Gui.item(Material.ARROW, "<mut>« Zurück"), p -> {
+            de.crafterteam.missilewars.game.Game g = plugin.games().get(p);
+            if (g != null && (g.state() == de.crafterteam.missilewars.game.Game.State.WAITING
+                    || g.state() == de.crafterteam.missilewars.game.Game.State.COUNTDOWN)) lobby(plugin, g, p);
+            else p.closeInventory();
+        });
         gui.open(viewer);
     }
 

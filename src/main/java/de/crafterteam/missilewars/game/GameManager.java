@@ -14,11 +14,14 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-/** Eine laufende Runde pro Map. */
+/**
+ * Verwaltet alle Runden. Im Queue-Modus (single-game.enabled) gibt es bis zu queues.max-games Runden
+ * gleichzeitig: Spieler landen automatisch in der offenen Lobby; startet sie, öffnet die nächste.
+ */
 public final class GameManager {
 
     private final MissileWarsPlugin plugin;
-    private final Map<String, Game> games = new HashMap<>();
+    private final Map<Integer, Game> games = new java.util.LinkedHashMap<>();
     private final Map<UUID, Game> byPlayer = new HashMap<>();
     private int nextId = 1;
 
@@ -35,8 +38,17 @@ public final class GameManager {
         return null;
     }
 
-    public Game get(String mapName) {
-        return games.get(mapName);
+    /** Runde per Nummer ("2", "#2") oder erste Runde auf dieser Map. */
+    public Game get(String key) {
+        if (key == null) return null;
+        String k = key.startsWith("#") ? key.substring(1) : key;
+        try {
+            Game g = games.get(Integer.parseInt(k));
+            if (g != null) return g;
+        } catch (NumberFormatException ignored) {
+        }
+        for (Game g : games.values()) if (g.map().name().equalsIgnoreCase(key)) return g;
+        return null;
     }
 
     public Collection<Game> all() {
@@ -62,27 +74,55 @@ public final class GameManager {
         de.crafterteam.missilewars.util.Msg.send(p, "<ok>Danke! <mut>" + m.name() + " hat jetzt <acc>" + m.ratingPercent() + "% <mut>positive Bewertungen.");
     }
 
+    /** Queue-Modus: automatische Lobbys statt freier Map-Wahl. */
     public boolean singleGame() {
         return plugin.getConfig().getBoolean("single-game.enabled", true);
     }
 
-    /** Die eine Runde im Einzelspiel-Modus (oder null). */
+    /** Wie viele Runden gleichzeitig laufen dürfen (Standard 2). */
+    public int maxGames() {
+        return Math.max(1, plugin.getConfig().getInt("queues.max-games", 2));
+    }
+
+    private static boolean open(Game g) {
+        return g.state() == Game.State.WAITING || g.state() == Game.State.COUNTDOWN;
+    }
+
+    /** Offene Lobby mit den meisten Spielern, die noch Platz hat. */
+    public Game openLobby() {
+        Game best = null;
+        for (Game g : games.values()) {
+            if (!open(g) || g.playerCount() >= g.maxPlayers()) continue;
+            if (best == null || g.playerCount() > best.playerCount()) best = g;
+        }
+        return best;
+    }
+
+    /** Runden, die nicht gerade enden. */
+    public int activeCount() {
+        int n = 0;
+        for (Game g : games.values()) if (g.state() != Game.State.ENDING) n++;
+        return n;
+    }
+
+    /** Die "Haupt"-Runde (offene Lobby bevorzugt) oder null. */
     public Game current() {
+        Game o = openLobby();
+        if (o != null) return o;
         for (Game g : games.values()) if (g.state() != Game.State.ENDING) return g;
         return null;
     }
 
     public Game getOrCreate(MapConfig map) throws GameException {
-        return getOrCreate(map, false);
+        for (Game g : games.values()) if (g.map() == map && open(g)) return g;
+        return create(map);
     }
 
-    /** force = auch im Einzelspiel eine zweite Runde erlauben (nur für den Map-Wechsel per Abstimmung). */
-    public Game getOrCreate(MapConfig map, boolean force) throws GameException {
-        Game g = games.get(map.name());
-        if (g != null) return g;
-        if (singleGame() && !force && current() != null) return current();
-        g = Game.create(plugin, map, nextId++);
-        games.put(map.name(), g);
+    /** Immer eine neue Runde (eigene Welt) – mehrere Runden auf derselben Map sind erlaubt. */
+    public Game create(MapConfig map) throws GameException {
+        int id = nextId++;
+        Game g = Game.create(plugin, map, id);
+        games.put(id, g);
         return g;
     }
 
@@ -99,62 +139,97 @@ public final class GameManager {
         byPlayer.values().removeIf(x -> x == g);
     }
 
-    /** Beitreten: bestimmte Map oder automatisch (wartende Runde → Standard-Map → erste fertige). */
+    /** Start-Map für eine neue Lobby: start-map oder zufällig, bevorzugt eine, die gerade nicht läuft. */
+    private MapConfig pickMap() {
+        String start = plugin.getConfig().getString("single-game.start-map", "random");
+        MapConfig map = start == null || start.equalsIgnoreCase("random") ? null : plugin.maps().get(start);
+        if (map != null && map.ready() && map.complete()) return map;
+        java.util.List<MapConfig> ready = new ArrayList<>(), free = new ArrayList<>();
+        for (MapConfig m : plugin.maps().all()) {
+            if (!m.ready() || !m.complete()) continue;
+            ready.add(m);
+            boolean used = false;
+            for (Game g : games.values()) if (g.map() == m) used = true;
+            if (!used) free.add(m);
+        }
+        java.util.List<MapConfig> pool = free.isEmpty() ? ready : free;
+        return pool.isEmpty() ? null : pool.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(pool.size()));
+    }
+
+    /** Spieler in eine andere Runde wechseln lassen (Lobby-Auswahl). */
+    public void switchTo(Player p, Game target) {
+        Game cur = get(p);
+        if (cur == target) {
+            de.crafterteam.missilewars.util.Msg.send(p, "<mut>Du bist schon in dieser Runde.");
+            return;
+        }
+        if (target.state() == Game.State.ENDING) {
+            de.crafterteam.missilewars.util.Msg.send(p, "<bad>Diese Runde endet gerade.");
+            return;
+        }
+        if (cur != null) cur.leave(p, false);
+        if (open(target) && target.playerCount() < target.maxPlayers()) target.join(p);
+        else target.spectate(p);
+    }
+
+    /** Beitreten: bestimmte Map oder automatisch (offene Lobby → neue Lobby → laufende Runde). */
     public void quickJoin(Player p, String mapName, boolean spectate) {
-        MapConfig map = null;
         if (singleGame()) {
-            Game cur = current();
-            if (cur == null && !games.isEmpty()) {
-                de.crafterteam.missilewars.util.Msg.send(p, "<mut>Die Runde endet gerade – du kommst gleich in die nächste.");
-                org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            Game g = openLobby();
+            if (g == null && activeCount() < maxGames()) {
+                MapConfig map = pickMap();
+                if (map == null) {
+                    de.crafterteam.missilewars.util.Msg.send(p, "<bad>Es ist keine fertige Map vorhanden. <mut>/mw list");
+                    return;
+                }
+                try {
+                    g = create(map);
+                    if (games.size() > 1) de.crafterteam.missilewars.util.Msg.broadcastLobby(plugin,
+                            "<ok>Neue Lobby <txt>#" + g.id() + " <mut>geöffnet <dim>(" + map.name() + ")");
+                } catch (GameException e) {
+                    de.crafterteam.missilewars.util.Msg.send(p, "<bad>" + de.crafterteam.missilewars.util.Msg.esc(e.getMessage()));
+                    return;
+                }
+            }
+            if (g == null) {
+                // alle Plätze belegt: laufender Runde beitreten (Late-Join) oder zuschauen
+                for (Game x : games.values()) {
+                    if (x.state() != Game.State.RUNNING) continue;
+                    if (g == null || x.playerCount() < g.playerCount()) g = x;
+                }
+            }
+            if (g == null) {
+                de.crafterteam.missilewars.util.Msg.send(p, "<mut>Alle Runden enden gerade – du kommst gleich in die nächste.");
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
                     if (p.isOnline() && get(p) == null) quickJoin(p, null, spectate);
                 }, 60L);
                 return;
             }
-            if (cur != null) {
-                if (spectate) cur.spectate(p);
-                else cur.join(p);
-                return;
-            }
-            mapName = null; // Map kommt aus start-map, danach per Abstimmung
-            String start = plugin.getConfig().getString("single-game.start-map", "random");
-            if (start != null && !start.equalsIgnoreCase("random")) map = plugin.maps().get(start);
-            if (map == null || !map.ready() || !map.complete()) {
-                java.util.List<MapConfig> ready = new java.util.ArrayList<>();
-                for (MapConfig m : plugin.maps().all()) if (m.ready() && m.complete()) ready.add(m);
-                map = ready.isEmpty() ? null : ready.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(ready.size()));
-            }
-        } else if (mapName != null) {
+            if (spectate) g.spectate(p);
+            else g.join(p);
+            return;
+        }
+        MapConfig map = null;
+        if (mapName != null) {
             map = plugin.maps().get(mapName);
         } else {
-            Game best = null;
-            for (Game g : games.values()) {
-                if (g.state() != Game.State.WAITING && g.state() != Game.State.COUNTDOWN) continue;
-                if (best == null || g.playerCount() > best.playerCount()) best = g;
-            }
+            Game best = openLobby();
             if (best != null) map = best.map();
             if (map == null) {
                 String def = plugin.getConfig().getString("server-mode.map", "");
                 if (def == null || def.isBlank()) def = plugin.getConfig().getString("default-map", "standard");
                 map = plugin.maps().get(def);
-                // läuft dort schon eine Runde und Late-Join ist aus? → andere freie Map suchen
-                Game running = map == null ? null : games.get(map.name());
-                if (running != null && running.state() == Game.State.ENDING) map = null;
             }
-            if (map == null) {
-                for (MapConfig m : plugin.maps().all()) {
-                    if (!m.ready() || !m.complete()) continue;
-                    Game g = games.get(m.name());
-                    if (g == null || g.state() != Game.State.ENDING) { map = m; break; }
-                }
-            }
+            if (map == null) map = pickMap();
         }
         if (map == null) {
             de.crafterteam.missilewars.util.Msg.send(p, "<bad>Gerade ist keine Map frei. <mut>/mw list");
             return;
         }
         try {
-            Game g = getOrCreate(map);
+            Game g = null;
+            for (Game x : games.values()) if (x.map() == map && x.state() != Game.State.ENDING) { g = x; break; }
+            if (g == null) g = create(map);
             if (spectate) g.spectate(p);
             else g.join(p);
         } catch (GameException e) {

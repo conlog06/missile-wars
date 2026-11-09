@@ -22,6 +22,14 @@ Alte Clients (1.8 / 1.12) kommen per **ViaVersion + ViaBackwards** auf den Serve
 
 Die Raketen werden vom Plugin bewegt (wie Flugmaschinen, aber ohne echtes Redstone) – das läuft stabil, ohne Lag und unabhängig von Redstone-Änderungen in neuen Versionen.
 
+## Neu in 2.6.0
+- **Mehrere Lobbys** – standardmäßig 2 Runden gleichzeitig (`queues.max-games`). Spieler kommen automatisch in die offene Lobby; startet sie, öffnet die nächste. Wechseln per Menü oder `/mw lobbys`.
+- **Neue Start-Logik** – ab 2 Spielern startet die Runde, sobald alle **Bereit** drücken (kein Timer). Ab 4 Spielern läuft ein 60-s-Timer, alle bereit = sofort los.
+- **Synchroner Timer** – Titel, Bossbar, XP-Leiste und Scoreboard zeigen dieselbe Sekunde.
+- **AFK nur als Hinweis** – nach 5 Minuten ohne Bewegung bekommt nur der Spieler eine Nachricht (`afk-action: spectate` für das alte Verhalten).
+- **Join-/Leave-Nachrichten** mit LuckPerms-Rang, Erst-Join-Begrüßung, Willkommens-Titel und MOTD (`join-messages`).
+- **Performance & Stabilität** – Scoreboard/Tablist senden nur Änderungen, Fehler in einer Runde werden geloggt statt sie hängen zu lassen.
+
 ## Neu in 2.5.0
 - **Raketen explodieren zuverlässig** – TNT fällt nicht mehr in den Void, Raketen am Reichweiten-Ende detonieren.
 - **Keine Raketen mehr durch Wände** – Schildbrecher/Bohrer durchdringen nur noch von Spielern gesetzte Blöcke, nicht die Map.

@@ -82,10 +82,51 @@ public final class ServerMode implements Listener {
         return serverMode() && toLobbyServer(p);
     }
 
+    // ── Join-/Leave-Nachrichten ──────────────────────────────────────
+
+    private String rank(Player p) {
+        String r = net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().serialize(plugin.nameTags().prefix(p));
+        return r.isBlank() ? "" : r + " ";
+    }
+
+    private String fill(String tpl, Player p) {
+        return tpl.replace("{player}", Msg.esc(p.getName()))
+                .replace("{rank}", rank(p))
+                .replace("{online}", String.valueOf(Bukkit.getOnlinePlayers().size()))
+                .replace("{max}", String.valueOf(Bukkit.getMaxPlayers()));
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onJoinMessage(PlayerJoinEvent e) {
+        if (!plugin.getConfig().getBoolean("join-messages.enabled", true)) return;
+        Player p = e.getPlayer();
+        boolean first = !p.hasPlayedBefore();
+        String tpl = first ? plugin.getConfig().getString("join-messages.first-join",
+                "<dim>[<ok>+</ok>]</dim> {rank}<txt>{player} <acc>ist zum ersten Mal da – willkommen! <dim>(#{unique})")
+                : plugin.getConfig().getString("join-messages.join", "<dim>[<ok>+</ok>]</dim> {rank}<txt>{player} <dim>({online}/{max})");
+        if (tpl == null || tpl.isBlank()) e.joinMessage(null);
+        else e.joinMessage(Msg.mm(fill(tpl, p).replace("{unique}", String.valueOf(Bukkit.getOfflinePlayers().length))));
+        if (!plugin.getConfig().getBoolean("join-messages.welcome-title", true)) return;
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!p.isOnline()) return;
+            p.showTitle(net.kyori.adventure.title.Title.title(Msg.mm("<logo>"),
+                    Msg.mm(first ? "<acc>Willkommen, <txt>" + Msg.esc(p.getName()) + "<acc>!" : "<mut>Willkommen zurück, <txt>" + Msg.esc(p.getName())),
+                    net.kyori.adventure.title.Title.Times.times(java.time.Duration.ofMillis(300), java.time.Duration.ofSeconds(3), java.time.Duration.ofMillis(700))));
+            p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.4f);
+            for (String line : plugin.getConfig().getStringList("join-messages.motd")) p.sendMessage(Msg.mm(fill(line, p)));
+        }, 15L);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onQuitMessage(PlayerQuitEvent e) {
+        if (!plugin.getConfig().getBoolean("join-messages.enabled", true)) return;
+        String tpl = plugin.getConfig().getString("join-messages.quit", "<dim>[<bad>-</bad>]</dim> {rank}<txt>{player}");
+        e.quitMessage(tpl == null || tpl.isBlank() ? null : Msg.mm(fill(tpl, e.getPlayer())));
+    }
+
     @EventHandler(priority = EventPriority.HIGH)
     public void onJoin(PlayerJoinEvent e) {
         if (!autoJoin()) return;
-        if (serverMode()) e.joinMessage(null);
         Player p = e.getPlayer();
         if (serverMode()) {   // reiner Minigame-Server: Inventar egal; sonst sichert der Snapshot alles
             p.setGameMode(GameMode.ADVENTURE);
@@ -96,17 +137,12 @@ public final class ServerMode implements Listener {
         }, 5L);
     }
 
-    @EventHandler(priority = EventPriority.HIGH)
-    public void onQuit(PlayerQuitEvent e) {
-        if (serverMode()) e.quitMessage(null);
-    }
-
     /** MOTD mit Rundenstatus – praktisch für Server-Selector auf dem Proxy. */
     @EventHandler
     public void onPing(PaperServerListPingEvent e) {
         if (!plugin.getConfig().getBoolean("server-mode.motd", true) || !autoJoin()) return;
-        Game g = null;
-        for (Game x : plugin.games().all()) if (g == null || x.playerCount() > g.playerCount()) g = x;
+        Game g = plugin.games().openLobby();
+        if (g == null) for (Game x : plugin.games().all()) if (g == null || x.playerCount() > g.playerCount()) g = x;
         String status;
         if (g == null) status = "<ok>● Wartet auf Spieler";
         else status = switch (g.state()) {

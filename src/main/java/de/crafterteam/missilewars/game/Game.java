@@ -169,6 +169,7 @@ public final class Game {
         w.setSpawnLocation((int) gs.x(), (int) gs.y(), (int) gs.z());
 
         Game g = new Game(plugin, map, w);
+        g.id = id;
         if (!g.scanPortals()) {
             g.destroyWorld();
             throw new GameException("Keine Portalblöcke in den Portal-Bereichen gefunden.");
@@ -328,9 +329,25 @@ public final class Game {
     }
 
     private void startTasks() {
-        secondTask = Bukkit.getScheduler().runTaskTimer(plugin, this::everySecond, 20L, 20L);
-        tickTask = Bukkit.getScheduler().runTaskTimer(plugin, this::everyTick, 1L, 1L);
+        // Fehler in einer Runde loggen statt die ganze Runde hängen zu lassen
+        secondTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> safe("Sekunde", this::everySecond), 20L, 20L);
+        tickTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> safe("Tick", this::everyTick), 1L, 1L);
         updateBoard();
+    }
+
+    private long lastErrorLog;
+
+    private void safe(String what, Runnable r) {
+        if (shutDown) return;
+        try {
+            r.run();
+        } catch (Throwable t) {
+            long now = System.currentTimeMillis();
+            if (now - lastErrorLog > 10_000) {   // Log nicht fluten
+                lastErrorLog = now;
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "Fehler in Runde #" + id + " (" + what + ")", t);
+            }
+        }
     }
 
     // ── Getter ───────────────────────────────────────────────────────
@@ -341,6 +358,9 @@ public final class Game {
     public Team team(Player p) { return teams.get(p.getUniqueId()); }
     public boolean isSpectator(Player p) { return spectators.contains(p.getUniqueId()); }
     public int playerCount() { return teams.size(); }
+    public int id() { return id; }
+    public int maxPlayers() { return max(); }
+    public int spectatorCount() { return spectators.size(); }
 
     public boolean contains(Player p) {
         return teams.containsKey(p.getUniqueId()) || spectators.contains(p.getUniqueId());
@@ -423,6 +443,8 @@ public final class Game {
         } else {
             p.setGameMode(GameMode.ADVENTURE);
             giveLobbyItems(p, t);
+            p.showBossBar(bossBar);
+            touch(p);
             broadcast(Msg.esc(p.getName()) + " ist beigetreten. <dim>(" + teams.size() + "/" + max() + ")");
             p.sendMessage(Msg.prefixed("Du bist in Team " + t.colored() + "<mut>. Wechseln: ")
                     .append(Msg.mm("<ok><u>[Grün]").clickEvent(ClickEvent.runCommand("/mw team gruen")))
@@ -485,6 +507,9 @@ public final class Game {
         ready.remove(id);
         respawning.remove(id);
         afkDeadline.remove(id);
+        afkWarned.remove(id);
+        tabSent.remove(id);
+        lastActive.remove(id);
         layerVotes.remove(id);
         plugin.games().unbind(p);
         plugin.preview().hide(p);
@@ -539,8 +564,6 @@ public final class Game {
         List<MapConfig> l = new ArrayList<>();
         for (MapConfig m : plugin.maps().all()) {
             if (!m.ready() || !m.complete()) continue;
-            Game other = plugin.games().get(m.name());
-            if (other != null && other != this) continue;
             l.add(m);
         }
         return l;
@@ -667,10 +690,10 @@ public final class Game {
             return;
         }
         MapConfig target = plugin.maps().get(best);
-        if (target == null || plugin.games().get(best) != null) return;
+        if (target == null) return;
         broadcast("<pri>Abstimmung: <txt>" + best + " <mut>gewinnt mit " + bestVotes + " Stimmen – Arena wird gewechselt …");
         try {
-            Game ng = plugin.games().getOrCreate(target, true);
+            Game ng = plugin.games().create(target);
             transferTo(ng);
         } catch (GameException e) {
             broadcast("<bad>Map-Wechsel fehlgeschlagen: " + Msg.esc(e.getMessage()));
@@ -720,27 +743,36 @@ public final class Game {
         setBoardTeam(p, t);
         if (!allowsWorld(p.getWorld())) p.teleport(waitSpot(t));
         giveLobbyItems(p, t);
+        p.showBossBar(bossBar);
+        touch(p);
     }
 
     // ── Ablauf ───────────────────────────────────────────────────────
 
-    /** Bei wenigen Spielern startet die Runde nur, wenn alle "Bereit" drücken. */
+    /** Ab so vielen Spielern läuft ein automatischer Start-Timer (darunter nur per Bereit). */
+    private int autoFrom() {
+        return Math.max(min(), plugin.getConfig().getInt("countdown.auto-from", 4));
+    }
+
+    /** Unter auto-from Spielern startet die Runde nur, wenn alle "Bereit" drücken – ohne Timer. */
     private boolean readyRequired() {
-        return !forcedStart && teams.size() <= plugin.getConfig().getInt("ready.required-up-to", 2);
+        return !forcedStart && teams.size() < autoFrom();
     }
 
     private void checkStart() {
         if (state == State.WAITING && teams.size() >= min() && readyRequired()) {
             if (readyTimer < 0) {
-                readyTimer = 0;   // AFK-Check aktiv
-                broadcast("<acc>Die Runde startet, sobald alle <ok><bold>Bereit</bold> <acc>gedrückt haben. "
-                        + "<mut>AFK-Check: Wer " + plugin.getConfig().getInt("ready.timeout", 60) + " s nicht bereit ist, fliegt raus.");
+                readyTimer = 0;
+                broadcast("<acc>Drückt alle <ok><bold>Bereit</bold><acc>, dann geht's los! "
+                        + "<dim>(ab " + autoFrom() + " Spielern startet ein " + plugin.getConfig().getInt("countdown.normal", 60) + "-s-Timer)");
             }
             return;
         }
         if (state == State.WAITING && teams.size() >= min()) {
             state = State.COUNTDOWN;
-            countdown = plugin.getConfig().getInt("countdown.normal", 20);
+            readyTimer = -1;
+            countdown = plugin.getConfig().getInt("countdown.normal", 60);
+            broadcast("<ok>" + teams.size() + " Spieler – <mut>Start in <acc>" + countdown + " s<mut>. Alle bereit = sofort los!");
         }
         if (state == State.COUNTDOWN && teams.size() >= max()) {
             countdown = Math.min(countdown, plugin.getConfig().getInt("countdown.full", 10));
@@ -763,8 +795,10 @@ public final class Game {
             case WAITING -> {
                 checkStart();
                 tickReadyTimer();
+                checkAfk();
             }
             case COUNTDOWN -> {
+                checkAfk();
                 checkReady();
                 if (readyRequired() && readyCount() < teams.size()) {
                     state = State.WAITING;
@@ -778,6 +812,7 @@ public final class Game {
             broadcast("<bad>Zu wenige Spieler – Countdown abgebrochen.");
                     break;
                 }
+                countdown--;   // erst zählen, dann anzeigen → Titel, Bossbar, XP und Scoreboard zeigen dieselbe Zahl
                 if (!votingDone && countdown <= plugin.getConfig().getInt("voting.end-at", 10)) {
                     resolveVote();
                     if (shutDown) return;
@@ -793,7 +828,6 @@ public final class Game {
                         p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_HAT, 1f, 1f);
                     }
                 }
-                countdown--;
             }
             case RUNNING -> {
                 seconds++;
@@ -829,8 +863,40 @@ public final class Game {
             default -> {
             }
         }
+        if (state == State.WAITING || state == State.COUNTDOWN) updateLobbyBar();
         updateBoard();
         updateTab();
+    }
+
+    private int countdownMax;
+
+    /** Bossbar + XP-Leiste in der Wartelobby – synchron mit Scoreboard und Titeln. */
+    private void updateLobbyBar() {
+        float progress;
+        int level = 0;
+        if (state == State.COUNTDOWN) {
+            countdownMax = Math.max(countdownMax, countdown);
+            progress = Math.max(0f, Math.min(1f, countdown / (float) Math.max(1, countdownMax)));
+            level = Math.max(0, countdown);
+            bossBar.color(countdown <= 5 ? BossBar.Color.GREEN : BossBar.Color.YELLOW);
+            bossBar.name(Msg.mm("<mut>Start in <acc><bold>" + level + " s</bold> <dim>| <mut>Bereit <ok>" + readyCount() + "<dim>/" + teams.size()));
+        } else if (teams.size() < min()) {
+            countdownMax = 0;
+            progress = Math.min(1f, teams.size() / (float) min());
+            bossBar.color(BossBar.Color.BLUE);
+            bossBar.name(Msg.mm("<mut>Warte auf Spieler <txt>" + teams.size() + "<dim>/" + min()));
+        } else {
+            countdownMax = 0;
+            progress = teams.isEmpty() ? 0f : readyCount() / (float) teams.size();
+            bossBar.color(BossBar.Color.GREEN);
+            bossBar.name(Msg.mm("<mut>Bereit <ok><bold>" + readyCount() + "<dim>/" + teams.size()
+                    + "</bold> <dim>| <mut>alle bereit = Start <dim>| <mut>Timer ab " + autoFrom() + " Spielern"));
+        }
+        bossBar.progress(progress);
+        for (Player p : players()) {
+            if (p.getLevel() != level) p.setLevel(level);
+            p.setExp(Math.min(0.999f, progress));
+        }
     }
 
     private void updateTab() {
@@ -842,8 +908,16 @@ public final class Game {
         };
         String footer = Team.GREEN.colored() + " <txt>" + teamPlayers(Team.GREEN).size() + " <dim>vs <txt>"
                 + teamPlayers(Team.RED).size() + " " + Team.RED.colored() + "\n<mut>Map: <txt>" + Msg.esc(map.name());
-        for (Player p : everyone()) plugin.nameTags().header(p, line, footer);
+        String key = line + footer;
+        if (!key.equals(lastTab)) {
+            lastTab = key;
+            tabSent.clear();
+        }
+        for (Player p : everyone()) if (tabSent.add(p.getUniqueId())) plugin.nameTags().header(p, line, footer);
     }
+
+    private String lastTab;
+    private final Set<UUID> tabSent = new HashSet<>();
 
     private int interval() {
         int base = Math.max(1, plugin.getConfig().getInt("item-interval", 15));
@@ -885,6 +959,10 @@ public final class Game {
     }
 
     private void start() {
+        for (Player p : players()) {
+            p.setLevel(0);
+            p.setExp(0f);
+        }
         applyLayerVote();
         if (plugin.getConfig().getBoolean("auto-balance", true)) autoBalance();
         state = State.RUNNING;
@@ -1326,7 +1404,9 @@ public final class Game {
             broadcast("<txt>" + Msg.esc(p.getName()) + " <mut>ist nicht mehr bereit.");
         }
         giveLobbyItems(p, t);
+        touch(p);
         checkReady();
+        updateLobbyBar();
         updateBoard();
     }
 
@@ -1344,46 +1424,28 @@ public final class Game {
         readyTimer = -1;
         if (state == State.WAITING) {
             state = State.COUNTDOWN;
-            countdown = 5;
-        } else if (countdown > 5) {
-            countdown = 5;
+            countdown = 6;        // nächste Sekunde zeigt 5
+        } else if (countdown > 6) {
+            countdown = 6;
         }
         broadcast("<ok>Alle sind bereit – es geht gleich los!");
     }
 
-    /** AFK-Check vor dem Start: der Timer startet die Runde nicht, er entfernt nur, wer nicht bereit ist. */
+    /** Hinweis in der Actionbar, solange die Runde auf "Bereit" wartet (kein Rauswurf). */
     private void tickReadyTimer() {
         if (readyTimer < 0) return;
         if (teams.size() < min() || !readyRequired()) {
             readyTimer = -1;
-            afkDeadline.clear();
             return;
         }
-        long now = System.currentTimeMillis();
-        long timeout = plugin.getConfig().getInt("ready.timeout", 60) * 1000L;
-        String action = plugin.getConfig().getString("ready.timeout-action", "leave");
-        for (Player p : new ArrayList<>(players())) {
-            UUID id = p.getUniqueId();
-            if (ready.contains(id)) {
-                afkDeadline.remove(id);
-                p.sendActionBar(Msg.mm("<ok>✔ Bereit <dim>| <mut>warte auf <txt>" + (teams.size() - readyCount()) + " <mut>Spieler"));
-                continue;
+        int missing = teams.size() - readyCount();
+        for (Player p : players()) {
+            if (ready.contains(p.getUniqueId())) {
+                p.sendActionBar(Msg.mm("<ok>✔ Bereit <dim>| <mut>warte auf <txt>" + missing + " <mut>Spieler"));
+            } else {
+                p.sendActionBar(Msg.mm("<acc>Drück <ok><bold>Bereit</bold> <dim>(grüner Farbstoff) <dim>| <ok>"
+                        + readyCount() + "<dim>/" + teams.size() + " <mut>bereit"));
             }
-            long deadline = afkDeadline.computeIfAbsent(id, k -> now + timeout);
-            int left = (int) Math.ceil((deadline - now) / 1000.0);
-            p.sendActionBar(Msg.mm("<acc>Drück <ok><bold>Bereit</bold> <dim>(grüner Farbstoff) <dim>| <mut>AFK-Check in <bad>" + Math.max(0, left) + " s"));
-            if (left == 30 || left == 10 || (left <= 5 && left > 0)) {
-                p.showTitle(Title.title(Msg.mm("<acc>Bereit?"), Msg.mm("<mut>Noch <bad>" + left + " s <mut>– sonst gilt du als AFK"),
-                        Title.Times.times(Duration.ZERO, Duration.ofMillis(1100), Duration.ofMillis(200))));
-                p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 0.8f, 0.7f);
-            }
-            if (left > 0) continue;
-            afkDeadline.remove(id);
-            Msg.send(p, "<bad>Du warst AFK (nicht bereit) und wurdest aus der Runde entfernt. <mut>Mit /mw join kommst du zurück.");
-            leave(p, true);
-            if ("kick".equalsIgnoreCase(action)) p.kick(Msg.mm("<logo>\n<bad>AFK – du warst nicht bereit."));
-            else if ("lobby-server".equalsIgnoreCase(action)) plugin.serverMode().toLobbyServer(p);
-            if (shutDown) return;
         }
     }
 
@@ -1414,26 +1476,45 @@ public final class Game {
         lastActive.put(p.getUniqueId(), System.currentTimeMillis());
     }
 
+    private final Set<UUID> afkWarned = new HashSet<>();
+
+    /**
+     * AFK-Hinweis: nach afk-seconds (Standard 5 min) ohne Bewegung bekommt nur der Spieler selbst eine Nachricht.
+     * afk-action: spectate = wie früher zum Zuschauer machen (nur in laufender Runde).
+     */
     private void checkAfk() {
-        int limit = plugin.getConfig().getInt("afk-seconds", 90);
+        int limit = plugin.getConfig().getInt("afk-seconds", 300);
         if (limit <= 0) return;
+        boolean spectate = "spectate".equalsIgnoreCase(plugin.getConfig().getString("afk-action", "message"));
         long now = System.currentTimeMillis();
         for (Player p : players()) {
-            Long last = lastActive.get(p.getUniqueId());
+            UUID id = p.getUniqueId();
+            Long last = lastActive.get(id);
             if (last == null) {
                 touch(p);
                 continue;
             }
-            if (now - last > limit * 1000L && !respawning.contains(p.getUniqueId())) {
-                broadcast("<txt>" + Msg.esc(p.getName()) + " <mut>war zu lange AFK und schaut jetzt zu.");
-                Msg.send(p, "<acc>Du warst AFK. <mut>/mw leave zum Verlassen oder warte auf die nächste Runde.");
+            if (now - last <= limit * 1000L) {
+                afkWarned.remove(id);
+                continue;
+            }
+            if (respawning.contains(id) || !afkWarned.add(id)) continue;   // nur einmal pro AFK-Phase
+            if (spectate && state == State.RUNNING) {
+                Msg.send(p, "<acc>Du warst AFK und schaust jetzt zu. <mut>/mw leave zum Verlassen.");
                 Team t = team(p);
                 spectate(p);
-                if (t != null && state == State.RUNNING && teamPlayers(t).isEmpty()) {
+                if (t != null && teamPlayers(t).isEmpty()) {
                     end(t.other(), "Team " + t.colored() + " <mut>hat keine aktiven Spieler mehr.");
                     return;
                 }
+                continue;
             }
+            int min = Math.max(1, limit / 60);
+            Msg.send(p, "<acc>Bist du noch da? <mut>Du bist seit <txt>" + (limit >= 60 ? min + " Min." : limit + " s")
+                    + " <mut>inaktiv." + (state == State.RUNNING ? " Dein Team braucht dich!" : " Drück <ok>Bereit<mut>, wenn du spielen willst."));
+            p.showTitle(Title.title(Msg.mm("<acc>AFK?"), Msg.mm("<mut>Beweg dich kurz, damit wir wissen, dass du da bist"),
+                    Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(2), Duration.ofMillis(400))));
+            p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, 0.8f, 0.8f);
         }
     }
 
@@ -2078,6 +2159,7 @@ public final class Game {
 
     private boolean shutDown;
     private boolean transferring;
+    private int id;
     private boolean firstBlood;
     private final Map<UUID, Kit> kits = new HashMap<>();
     private final Set<UUID> ready = new HashSet<>();
@@ -2163,8 +2245,11 @@ public final class Game {
         List<String> lines = new ArrayList<>();
         lines.add("<dim>━━━━━━━━━━━━━━━━━━");
         lines.add("<mut>Map <txt><bold>" + Msg.esc(map.name()) + "</bold> <dim>" + map.describe());
+        if (plugin.games().maxGames() > 1) lines.add("<mut>Lobby <txt>#" + id);
         switch (state) {
-            case WAITING -> lines.add("<mut>Status <acc>Warte auf Spieler <dim>(" + teams.size() + "/" + min() + ")");
+            case WAITING -> lines.add(teams.size() < min()
+                    ? "<mut>Status <acc>Warte auf Spieler <dim>(" + teams.size() + "/" + min() + ")"
+                    : "<mut>Status <ok>Warte auf Bereit");
             case COUNTDOWN -> lines.add("<mut>Status <ok>Start in " + Math.max(0, countdown) + " s");
             case RUNNING -> lines.add("<mut>Zeit <txt><bold>" + formatTime(seconds) + "</bold>" + (suddenDeath ? " <bad>SUDDEN DEATH" : ""));
             case ENDING -> lines.add("<mut>Status <pri>Runde beendet");
@@ -2201,14 +2286,22 @@ public final class Game {
         lines.add("<dim>━━━━━━━━━━━━━━━━━━ ");
         String server = plugin.getConfig().getString("tablist.server-name", "");
         if (server != null && !server.isBlank()) lines.add("<pri>" + Msg.esc(server));
+        // Nur geänderte Zeilen neu senden (spart Pakete bei vielen Spielern)
+        boolean resized = lines.size() != lastLines;
         for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
+            if (!resized && i < boardCache.size() && boardCache.get(i).equals(line)) continue;
             Score s = sidebar.getScore("l" + i);
-            s.setScore(lines.size() - i);
-            s.customName(Msg.mm(lines.get(i).isBlank() ? "<reset>" : lines.get(i)));
+            if (resized || !s.isScoreSet()) s.setScore(lines.size() - i);
+            s.customName(Msg.mm(line.isBlank() ? "<reset>" : line));
         }
         for (int i = lines.size(); i < lastLines; i++) board.resetScores("l" + i);
         lastLines = lines.size();
+        boardCache.clear();
+        boardCache.addAll(lines);
     }
+
+    private final List<String> boardCache = new ArrayList<>();
 
     private static String formatTime(int s) {
         return String.format("%02d:%02d", s / 60, s % 60);
