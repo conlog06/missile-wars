@@ -22,11 +22,15 @@ Alte Clients (1.8 / 1.12) kommen per **ViaVersion + ViaBackwards** auf den Serve
 
 Die Raketen werden vom Plugin bewegt (wie Flugmaschinen, aber ohne echtes Redstone) – das läuft stabil, ohne Lag und unabhängig von Redstone-Änderungen in neuen Versionen.
 
+## 2.4.1
+- Fix: „Bereit" musste man zweimal drücken (doppelte Klick-Events vom Client)
+- 15 Blöcke Schutzglas vor dem Portal für längere Runden
+
 ## Neu in 2.4.0
 
 **5 Arena-Themes** (Map-Abstimmung): **Klassisch**, **Piratenschiffe** (Galeonen mit Masten, Segeln, Kajüte und Meer), **Raumschiffe** (eigene Sci-Fi-Schiffe mit Triebwerken, Cockpit, Asteroiden & Mond, Nachthimmel), **Eisfestung** (Türme, Zinnen, Eisschollen), **Netherfestung** (Basaltsäulen, Netherrack-Inseln). Werden beim ersten Start einmal angelegt (`piraten`, `weltraum`, `eisfestung`, `nether`); eigene: `/mw map generate <name> [abstand] [thema]`.
 
-**Mehr Schutz** – zwei zusätzliche Glasschichten vor jedem Portal.
+**Mehr Schutz** – vor jedem Portal liegt ein 15 Blöcke dicker Glasblock (ab 2.4.1), Spawn vorne auf dem Dach.
 
 **Schleichen beim Platzieren** – Rakete wird 5 Blöcke tiefer gesetzt (`missile.sneak-offset`), Vorschau zeigt es.
 

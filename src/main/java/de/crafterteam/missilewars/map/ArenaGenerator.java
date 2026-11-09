@@ -19,7 +19,7 @@ import java.util.Random;
  *  WELTRAUM   – eigene Sci-Fi-Raumschiffe mit Triebwerken, Asteroiden und Mond
  *  EIS        – Eisfestungen mit Türmen und Eisschollen
  *  NETHER     – Netherfestungen mit Basaltsäulen
- * In jeder Basis liegen vor dem Portal zwei zusätzliche Glasschichten.
+ * In jeder Basis liegt vor dem Portal ein 15 Blöcke dicker Glasblock (lange Runden).
  */
 public final class ArenaGenerator {
 
@@ -59,7 +59,8 @@ public final class ArenaGenerator {
     public static final int BOTTOM = 49;
     public static final int TOP = 67;
     public static final int HALF_W = 16;
-    public static final int FRONT = 4;
+    public static final int FRONT = 17;           // Vorderseite: 15 Blöcke Glas + Luftspalt vor dem Portal
+    public static final int GLASS_LAYERS = 15;
     public static final int BACK = 2;
     public static final int PORTAL_HALF_W = 10;
     public static final int PORTAL_BOTTOM = 51;
@@ -80,7 +81,7 @@ public final class ArenaGenerator {
             int s = side(t);
             int zp = s * distance;
             m.portal(t, new MapConfig.Box(-PORTAL_HALF_W, PORTAL_BOTTOM, zp, PORTAL_HALF_W, PORTAL_TOP, zp));
-            double spawnZ = zp - s * 2 + 0.5;
+            double spawnZ = zp - s * (FRONT - 5) + 0.5;   // vorne auf dem Dach, nah an der Kante
             float yaw = t == Team.GREEN ? 0f : 180f;
             m.spawn(t, new MapConfig.Spawn(0.5, TOP + 1, spawnZ, yaw, 0f));
         }
@@ -142,9 +143,9 @@ public final class ArenaGenerator {
                                 boolean frame = Math.abs(x) == PORTAL_HALF_W + 1 || y == PORTAL_BOTTOM - 1 || y == PORTAL_TOP + 1;
                                 set(w, x, y, z, frame && (x + y) % 4 == 0 ? Material.CRYING_OBSIDIAN : Material.OBSIDIAN);
                             }
-                        } else if ((z == zp - s * 2 || z == zp - s * 3)
-                                && Math.abs(x) <= PORTAL_HALF_W + 2 && y >= PORTAL_BOTTOM - 1 && y <= PORTAL_TOP + 1) {
-                            set(w, x, y, z, t.glass());   // zwei Schutzschichten vor dem Portal
+                        } else {
+                            int depth = (z - zp) * -s;    // Abstand vor dem Portal
+                            if (depth >= 2 && depth < 2 + GLASS_LAYERS) set(w, x, y, z, t.glass());   // 15 Blöcke Schutzglas
                         }
                         continue;
                     }

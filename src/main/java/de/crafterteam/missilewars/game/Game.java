@@ -200,7 +200,7 @@ public final class Game {
             boolean ax = map.axisX();
             int latMin = map.lateralMin(b) - 8, latMax = map.lateralMax(b) + 8;
             int along = (int) Math.floor(map.along(b));
-            for (int a = along - 8; a <= along + 8; a++) {
+            for (int a = along - 22; a <= along + 22; a++) {
                 for (int l = latMin; l <= latMax; l++) {
                     for (int y = b.minY() - 5; y <= b.maxY() + 5; y++) {
                         Block bl = ax ? world.getBlockAt(a, y, l) : world.getBlockAt(l, y, a);
@@ -1859,8 +1859,8 @@ public final class Game {
         boolean ax = map.axisX();
         int f = map.forward(loser);                    // Richtung zum Angreifer
         Location center = new Location(world, b.centerX(), b.centerY(), b.centerZ());
-        Location cam = ax ? new Location(world, b.centerX() + f * 18, b.centerY() + 1, b.centerZ())
-                : new Location(world, b.centerX(), b.centerY() + 1, b.centerZ() + f * 18);
+        Location cam = ax ? new Location(world, b.centerX() + f * 30, b.centerY() + 1, b.centerZ())
+                : new Location(world, b.centerX(), b.centerY() + 1, b.centerZ() + f * 30);
         cam.setDirection(center.toVector().subtract(cam.toVector()));
 
         List<Block> order = new ArrayList<>(destroyOrder.getOrDefault(loser, List.of()));
@@ -1873,7 +1873,7 @@ public final class Game {
         // 1) Glas zwischen Kamera und Portal zerspringt
         later(12, () -> {
             int along = (int) Math.floor(map.along(b));
-            for (int a = along + f; a != along + f * 8; a += f) {
+            for (int a = along + f; a != along + f * 20; a += f) {
                 for (int l = map.lateralMin(b) - 3; l <= map.lateralMax(b) + 3; l++) {
                     for (int y = b.minY() - 2; y <= b.maxY() + 2; y++) {
                         Block g = ax ? world.getBlockAt(a, y, l) : world.getBlockAt(l, y, a);

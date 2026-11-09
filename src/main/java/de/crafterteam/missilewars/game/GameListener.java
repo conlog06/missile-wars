@@ -57,6 +57,7 @@ public final class GameListener implements Listener {
     private final MissileWarsPlugin plugin;
     private final NamespacedKey shieldKey;
     private final Set<Material> breakable = EnumSet.noneOf(Material.class);
+    private final java.util.Map<java.util.UUID, Long> lastUse = new java.util.HashMap<>();
 
     public GameListener(MissileWarsPlugin plugin) {
         this.plugin = plugin;
@@ -116,6 +117,10 @@ public final class GameListener implements Listener {
 
         Game g = gameOf(p);
         if (g == null) return;
+        // Der Client schickt bei Rechtsklick auf einen Block zwei Events (Block + Luft) → nur das erste zählt
+        long now = System.currentTimeMillis();
+        Long last = lastUse.put(p.getUniqueId(), now);
+        if (last != null && now - last < 250) return;
         if (GameItems.MENU_TEAM.equals(id)) {
             if (g.team(p) == null) return;
             boolean dialog = "dialog".equalsIgnoreCase(plugin.getConfig().getString("menu-style", "dialog"));
