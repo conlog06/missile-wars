@@ -39,7 +39,8 @@ public final class VoteMenu {
     }
 
     private static String describe(MapConfig m) {
-        return m.type() == MapConfig.Type.GENERATED ? "Generierte Arena, Abstand " + m.distance() : "Eigene Map";
+        String base = m.type() == MapConfig.Type.GENERATED ? "Generierte Arena, Abstand " + m.distance() : "Eigene Map";
+        return base + (m.ratingPercent() < 0 ? "" : "\n👍 " + m.ratingPercent() + "% (" + m.ratings() + " Bewertungen)");
     }
 
     private static void openDialog(MissileWarsPlugin plugin, Game game, Player viewer, List<MapConfig> maps) {

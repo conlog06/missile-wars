@@ -41,6 +41,19 @@ public record PlayerSnapshot(ItemStack[] contents, Location location, GameMode m
         p.teleport(target != null ? target : location);
     }
 
+    /** Wiederherstellen ohne Teleport (z. B. beim Verlassen des Servers). */
+    public void restoreHere(Player p) {
+        reset(p);
+        p.getInventory().setContents(contents);
+        p.setGameMode(mode);
+        p.setHealth(Math.min(health, maxHealth(p)));
+        p.setFoodLevel(food);
+        p.setLevel(level);
+        p.setExp(exp);
+        p.addPotionEffects(effects);
+        p.setAllowFlight(allowFlight);
+    }
+
     public static double maxHealth(Player p) {
         AttributeInstance a = p.getAttribute(Attribute.MAX_HEALTH);
         return a != null ? a.getValue() : 20.0;
@@ -60,6 +73,7 @@ public record PlayerSnapshot(ItemStack[] contents, Location location, GameMode m
         p.setExp(0f);
         p.setAllowFlight(false);
         p.setFlying(false);
+        p.setGlowing(false);
         setAttackSpeed(p, 4.0);
     }
 

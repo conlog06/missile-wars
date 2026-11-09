@@ -89,8 +89,17 @@ public final class Shop {
     /** Coins vergeben (Betrag aus coins.<reason> in der Config). */
     public void reward(Player p, String reason, String label) {
         if (!enabled() || p == null || !p.isOnline()) return;
-        int amount = plugin.getConfig().getInt("coins." + reason, 0);
-        if (amount <= 0) return;
+        give(p, plugin.getConfig().getInt("coins." + reason, 0), label);
+    }
+
+    /** Coins geben (mit Event- und VIP-Multiplikator). */
+    public void give(Player p, int base, String label) {
+        if (!enabled() || p == null || !p.isOnline() || base <= 0) return;
+        double mult = 1.0;
+        Game g = plugin.games().get(p);
+        if (g != null) mult *= g.coinMultiplier();
+        if (p.hasPermission("missilewars.vip")) mult *= plugin.getConfig().getDouble("vip.coin-multiplier", 1.5);
+        int amount = (int) Math.round(base * mult);
         plugin.stats().add(p, Stat.COINS, amount);
         p.sendActionBar(Msg.mm("<acc>+" + amount + " Coins <dim>(" + label + ")"));
         p.playSound(p.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.5f, 1.8f);
@@ -148,6 +157,11 @@ public final class Shop {
             Msg.send(p, "<bad>Der Shop ist deaktiviert.");
             return;
         }
+        Game running = plugin.games().get(p);
+        if (running != null && running.state() == Game.State.RUNNING && running.team(p) != null) {
+            openRound(p);
+            return;
+        }
         Gui gui = new Gui(3, "<logo> <dim>» <acc>Shop").frame();
         gui.set(4, Gui.item(Material.SUNFLOWER, "<acc><bold>" + coins(p) + " Coins",
                 "<mut>Verdienen: Kills, Siege, Portaltreffer,", "<mut>Raketen, First Blood & Killstreaks."), null);
@@ -156,6 +170,67 @@ public final class Shop {
         gui.set(14, Gui.item(Material.WITHER_ROSE, "<bad><bold>Kill-Effekte", "<mut>Effekt, wenn du jemanden erledigst", "", "<acc>» Öffnen"), this::openKillFx);
         gui.set(16, Gui.item(Material.EXPERIENCE_BOTTLE, "<ok><bold>Rundenboosts", "<mut>Extra-Items für die nächste Runde", "", "<acc>» Öffnen"), this::openBoosts);
         gui.set(22, Gui.item(Material.BARRIER, "<bad>Schließen"), Player::closeInventory);
+        gui.set(18, Gui.item(Material.TNT, "<pri><bold>Runden-Shop", "<mut>Raketen & Items während der Runde",
+                "<mut>kaufen (Smaragd oder Taste F).", "", "<dim>Öffnet sich in der Runde automatisch."), null);
+        gui.set(26, Gui.item(Material.CLOCK, "<acc><bold>Tagesbelohnung", plugin.progression().dailyAvailable(p)
+                ? "<ok>Bereit zum Abholen!" : "<dim>Heute schon abgeholt", "", "<acc>» Klicken"), pl -> {
+            plugin.progression().claimDaily(pl);
+            open(pl);
+        });
+        gui.open(p);
+    }
+
+    /** Raketen & Items mitten in der Runde gegen Coins. */
+    public void openRound(Player p) {
+        Game g = plugin.games().get(p);
+        if (g == null || g.state() != Game.State.RUNNING || g.team(p) == null) {
+            open(p);
+            return;
+        }
+        org.bukkit.configuration.ConfigurationSection sec = plugin.getConfig().getConfigurationSection("shop.round-items");
+        Gui gui = new Gui(4, "<logo> <dim>» <pri>Runden-Shop").frame();
+        gui.set(4, Gui.item(Material.SUNFLOWER, "<acc><bold>" + coins(p) + " Coins",
+                "<mut>Noch <txt>" + g.purchasesLeft(p) + "<mut> Käufe in dieser Runde."), null);
+        int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25};
+        int i = 0;
+        if (sec != null) {
+            for (String id : sec.getKeys(false)) {
+                if (i >= slots.length) break;
+                int price = sec.getInt(id);
+                org.bukkit.inventory.ItemStack shown = plugin.items().create(id);
+                if (shown == null || price <= 0) continue;
+                List<String> lore = new ArrayList<>();
+                lore.add("<mut>Preis: <acc>" + price + " Coins");
+                lore.add(coinLine(p));
+                lore.add("");
+                lore.add(coins(p) >= price && g.purchasesLeft(p) > 0 ? "<acc>» Klicken zum Kaufen" : "<bad>Nicht genug Coins / Limit erreicht");
+                org.bukkit.inventory.ItemStack icon = shown.clone();
+                icon.editMeta(m -> {
+                    List<net.kyori.adventure.text.Component> l = new ArrayList<>();
+                    if (m.lore() != null) l.addAll(m.lore());
+                    l.add(Msg.item(""));
+                    for (String s : lore) l.add(Msg.item(s));
+                    m.lore(l);
+                });
+                gui.set(slots[i++], icon, pl -> {
+                    Game gg = plugin.games().get(pl);
+                    if (gg == null || gg.state() != Game.State.RUNNING) { pl.closeInventory(); return; }
+                    if (gg.purchasesLeft(pl) <= 0) {
+                        Msg.send(pl, "<bad>Kauflimit für diese Runde erreicht.");
+                        return;
+                    }
+                    if (!plugin.stats().spend(pl, price)) {
+                        notEnough(pl, price);
+                        return;
+                    }
+                    gg.countPurchase(pl);
+                    pl.getInventory().addItem(plugin.items().create(id));
+                    pl.playSound(pl.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.7f, 1.5f);
+                    openRound(pl);
+                });
+            }
+        }
+        gui.set(31, Gui.item(Material.BARRIER, "<bad>Schließen"), Player::closeInventory);
         gui.open(p);
     }
 

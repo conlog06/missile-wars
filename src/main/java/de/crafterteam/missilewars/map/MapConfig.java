@@ -48,6 +48,7 @@ public final class MapConfig {
     private int distance;
     private boolean ready;
     private int deathY;
+    private int ratingUp, ratingDown;
     private final Map<Team, Spawn> spawns = new EnumMap<>(Team.class);
     private final Map<Team, Box> portals = new EnumMap<>(Team.class);
 
@@ -68,6 +69,10 @@ public final class MapConfig {
     public boolean ready() { return ready; }
     public void ready(boolean r) { this.ready = r; }
     public int deathY() { return deathY; }
+    public void rate(boolean up) { if (up) ratingUp++; else ratingDown++; }
+    public int ratings() { return ratingUp + ratingDown; }
+    /** Anteil positiver Bewertungen 0..100, -1 wenn keine. */
+    public int ratingPercent() { return ratings() == 0 ? -1 : Math.round(ratingUp * 100f / ratings()); }
     public void deathY(int y) { this.deathY = y; }
     public Spawn spawn(Team t) { return spawns.get(t); }
     public void spawn(Team t, Spawn s) { spawns.put(t, s); }
@@ -130,6 +135,8 @@ public final class MapConfig {
         y.set("distance", distance);
         y.set("ready", ready);
         y.set("death-y", deathY);
+        y.set("rating.up", ratingUp);
+        y.set("rating.down", ratingDown);
         for (Team t : Team.values()) {
             String p = t.name().toLowerCase();
             Spawn s = spawns.get(t);
@@ -160,6 +167,8 @@ public final class MapConfig {
         m.distance = y.getInt("distance", 60);
         m.ready = y.getBoolean("ready", false);
         m.deathY = y.getInt("death-y", 30);
+        m.ratingUp = y.getInt("rating.up", 0);
+        m.ratingDown = y.getInt("rating.down", 0);
         if (type == Type.GENERATED) {
             ArenaGenerator.applyLayout(m, m.distance);
             m.ready = true;

@@ -22,6 +22,30 @@ Alte Clients (1.8 / 1.12) kommen per **ViaVersion + ViaBackwards** auf den Serve
 
 Die Raketen werden vom Plugin bewegt (wie Flugmaschinen, aber ohne echtes Redstone) – das läuft stabil, ohne Lag und unabhängig von Redstone-Änderungen in neuen Versionen.
 
+## Neu in 2.3.0
+
+**Neue Arena im klassischen Look** – zwei große Glas-Boxen in Teamfarbe mit Obsidian-Kanten, darin eine Obsidianwand mit dem Portal; Spawn auf dem Dach; Tageshimmel; großes „MISSILE WARS"-Schild an Ketten seitlich der Flugbahn. Generierte Maps bekommen das Design automatisch.
+
+**Portal-HP funktioniert jetzt wirklich** – Vanilla bricht ein ganzes Netherportal ab, sobald ein Block fehlt. Das wird jetzt verhindert, Treffer ziehen nur die getroffenen Blöcke ab.
+
+**Shop in der Runde** – Smaragd in der Hotbar oder Taste **F**: Raketen & Items gegen Coins (Preise & Kauflimit in `shop:`).
+
+**Mod-/Admin-Modus** (`/mw mod`, Recht `missilewars.mod`) – unsichtbar, fliegen, unverwundbar; Werkzeuge: Spieler-Liste (Teleport, Einfrieren, Team setzen, Zuschauer, aus der Runde werfen), Runde starten, Runde stoppen (Admin), Unsichtbar an/aus, zur Arena.
+
+**Start-Block für VIP/Premium** (Recht `missilewars.start`) – Smaragdblock in der Wartelobby (oder `/mw start`): startet die Runde mit 10 s Countdown, ab 2 Spielern, einmal pro Runde. Recht `missilewars.vip`: 1,5× Coins & doppelte Tagesbelohnung.
+
+**10 neue Features**
+1. **Airdrops** – alle 90 s fällt eine leuchtende Kiste bei einem Team; wer sie öffnet, bekommt seltene Items + Coins
+2. **Zufalls-Events** – Raketenregen, Doppelte Coins, Turbo-Raketen, Mondschwerkraft, Item-Flut
+3. **Kopfgeld** – ab 3er-Serie leuchtet der Spieler; wer ihn erledigt, kassiert
+4. **Assists** – Schaden in den letzten 10 s zählt, mit Coins
+5. **Rache** – erledige deinen letzten Killer für Bonus-Coins
+6. **Raketen abfangen** – gegnerische Rakete per Explosion oder Abbau stoppen → Ansage + Coins
+7. **Level** – XP aus allen Statistiken, Level-Abzeichen in Chat & Tab, Level-Up-Belohnung
+8. **Erfolge** – 13 Erfolge mit Fortschrittsbalken (`/mw erfolge`)
+9. **Tagesbelohnung** – `/mw daily`, steigt 7 Tage lang
+10. **Map-Bewertung** – nach der Runde 👍/👎, Ergebnis in der Map-Abstimmung
+
 ## Neu in 2.2.0
 
 **Coins & Shop** (`/mw shop`, Smaragd in der Wartelobby)

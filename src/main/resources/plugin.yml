@@ -12,3 +12,15 @@ permissions:
   missilewars.admin:
     description: Maps einrichten, Runden starten/stoppen
     default: op
+    children:
+      missilewars.mod: true
+      missilewars.start: true
+  missilewars.mod:
+    description: Mod-Modus (/mw mod) – unsichtbar, Spieler einfrieren/verschieben, Runde starten
+    default: op
+  missilewars.start:
+    description: VIP/Premium – Start-Block in der Wartelobby, /mw start
+    default: op
+  missilewars.vip:
+    description: VIP – mehr Coins (vip.coin-multiplier) und doppelte Tagesbelohnung
+    default: false

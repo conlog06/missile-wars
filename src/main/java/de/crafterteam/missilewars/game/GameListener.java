@@ -97,6 +97,15 @@ public final class GameListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH)
     public void onInteract(PlayerInteractEvent e) {
         Player p = e.getPlayer();
+        if (e.getAction() == Action.RIGHT_CLICK_BLOCK && e.getClickedBlock() != null
+                && e.getClickedBlock().getType() == Material.CHEST) {
+            Game ag = gameOf(e.getClickedBlock().getWorld());
+            if (ag != null && ag.isAirdrop(e.getClickedBlock())) {
+                e.setCancelled(true);
+                if (e.getHand() == EquipmentSlot.HAND && ag.team(p) != null) ag.openAirdrop(p, e.getClickedBlock());
+                return;
+            }
+        }
         ItemStack item = e.getItem();
         String id = plugin.items().idOf(item);
         if (id == null) return;
@@ -113,6 +122,10 @@ public final class GameListener implements Listener {
             // Schleichen + Rechtsklick öffnet immer das Inventar-Menü (Fallback für alte Clients)
             if (dialog && !p.isSneaking()) TeamDialog.open(plugin, g, p);
             else de.crafterteam.missilewars.gui.Menus.team(plugin, g, p);
+            return;
+        }
+        if (GameItems.MENU_VIPSTART.equals(id)) {
+            g.vipStart(p);
             return;
         }
         if (GameItems.MENU_SHOP.equals(id)) {
@@ -337,7 +350,7 @@ public final class GameListener implements Listener {
         net.kyori.adventure.text.Component rank = plugin.nameTags().prefix(p);
         net.kyori.adventure.text.Component head = rank.equals(net.kyori.adventure.text.Component.empty())
                 ? Msg.mm(prefix) : Msg.mm(prefix).append(rank).append(net.kyori.adventure.text.Component.space());
-        String rest = "<txt>" + Msg.esc(p.getName()) + "<dim> » <mut>";
+        String rest = plugin.progression().badge(p) + " <txt>" + Msg.esc(p.getName()) + "<dim> » <mut>";
         e.renderer((source, displayName, message, viewer) -> head.append(Msg.mm(rest)).append(message));
     }
 
@@ -362,13 +375,18 @@ public final class GameListener implements Listener {
     public void onBreak(BlockBreakEvent e) {
         Game g = gameOf(e.getBlock().getWorld());
         if (g == null) return;
-        if (g.state() != Game.State.RUNNING || g.team(e.getPlayer()) == null
-                || !breakable.contains(e.getBlock().getType())) {
+        Material type = e.getBlock().getType();
+        boolean glass = type.name().contains("GLASS");
+        // Glas nur, wenn es von Schild/Plattform stammt – das Arena-Glas bleibt stehen
+        boolean allowed = glass ? g.isPlaced(e.getBlock()) : breakable.contains(type);
+        if (g.state() != Game.State.RUNNING || g.team(e.getPlayer()) == null || !allowed) {
             e.setCancelled(true);
             return;
         }
         e.setDropItems(false);
         e.setExpToDrop(0);
+        g.unmarkPlaced(e.getBlock());
+        g.creditIntercept(e.getPlayer(), java.util.List.of(e.getBlock()));
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -378,12 +396,65 @@ public final class GameListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onEntityExplode(EntityExplodeEvent e) {
-        if (gameOf(e.getEntity().getWorld()) != null) e.setYield(0f);
+        Game g = gameOf(e.getEntity().getWorld());
+        if (g == null) return;
+        e.setYield(0f);
+        Player src = null;
+        if (e.getEntity() instanceof TNTPrimed tnt && tnt.getSource() instanceof Player p) src = p;
+        else if (e.getEntity() instanceof Projectile proj && proj.getShooter() instanceof Player p) src = p;
+        g.creditIntercept(src, e.blockList());
+        breakPortalBlocksQuietly(e.blockList());
+    }
+
+    /** Portalblöcke selbst (ohne Physik) entfernen, damit nicht das ganze Portal zusammenbricht. */
+    private void breakPortalBlocksQuietly(java.util.List<org.bukkit.block.Block> blocks) {
+        java.util.Iterator<org.bukkit.block.Block> it = blocks.iterator();
+        while (it.hasNext()) {
+            org.bukkit.block.Block b = it.next();
+            if (b.getType() == Material.NETHER_PORTAL) {
+                it.remove();
+                b.setType(Material.AIR, false);
+            }
+        }
+    }
+
+    /**
+     * Vanilla bricht ein ganzes Netherportal ab, sobald ein Block daneben fehlt.
+     * Wir unterdrücken die Form-Updates neben Portalblöcken → Portal-HP funktioniert.
+     */
+    @EventHandler(ignoreCancelled = true)
+    public void onPhysics(org.bukkit.event.block.BlockPhysicsEvent e) {
+        org.bukkit.block.Block b = e.getBlock();
+        if (!b.getWorld().getName().startsWith(Game.WORLD_PREFIX)) return;
+        if (b.getType() == Material.NETHER_PORTAL) {
+            e.setCancelled(true);
+            return;
+        }
+        for (org.bukkit.block.BlockFace f : PORTAL_FACES) {
+            if (b.getRelative(f).getType() == Material.NETHER_PORTAL) {
+                e.setCancelled(true);
+                return;
+            }
+        }
+    }
+
+    private static final org.bukkit.block.BlockFace[] PORTAL_FACES = {
+            org.bukkit.block.BlockFace.NORTH, org.bukkit.block.BlockFace.SOUTH, org.bukkit.block.BlockFace.EAST,
+            org.bukkit.block.BlockFace.WEST, org.bukkit.block.BlockFace.UP, org.bukkit.block.BlockFace.DOWN};
+
+    @EventHandler(ignoreCancelled = true)
+    public void onSwapHands(org.bukkit.event.player.PlayerSwapHandItemsEvent e) {
+        Game g = gameOf(e.getPlayer());
+        if (g == null) return;
+        e.setCancelled(true);
+        if (g.state() == Game.State.RUNNING && g.team(e.getPlayer()) != null) plugin.shop().openRound(e.getPlayer());
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onBlockExplode(BlockExplodeEvent e) {
-        if (gameOf(e.getBlock().getWorld()) != null) e.setYield(0f);
+        if (gameOf(e.getBlock().getWorld()) == null) return;
+        e.setYield(0f);
+        breakPortalBlocksQuietly(e.blockList());
     }
 
     /** Echte Kolben bleiben aus – die Raketen bewegt das Plugin. */

@@ -39,6 +39,7 @@ public final class GameItems {
     public static final String MENU_MISSILES = "menu_missiles";
     public static final String MENU_READY = "menu_ready";
     public static final String MENU_SHOP = "menu_shop";
+    public static final String MENU_VIPSTART = "menu_vipstart";
 
     public static final List<String> ALL_IDS = List.of(
             "tomahawk", "juggernaut", "shieldbuster", "lightning", "guardian", "gemini", "interceptor",
@@ -96,6 +97,9 @@ public final class GameItems {
                     "<mut>Alle Raketen & Items im Überblick", "<dim>Rechtsklick");
             case MENU_READY -> tagged(new ItemStack(Material.LIME_DYE), id, "<ok><bold>Bereit!",
                     "<mut>Wenn alle bereit sind, startet die Runde sofort", "<dim>Rechtsklick");
+            case MENU_VIPSTART -> tagged(new ItemStack(Material.EMERALD_BLOCK), id,
+                    "<gradient:#FFC145:#FF6B35><bold>Start-Block</bold></gradient> <dim>(VIP)",
+                    "<mut>Startet die Runde sofort (10 s Countdown).", "<mut>Einmal pro Runde.", "<dim>Rechtsklick");
             case MENU_SHOP -> tagged(new ItemStack(Material.EMERALD), id, "<ok><bold>Shop",
                     "<mut>Kits, Raketen-Spuren, Kill-Effekte, Boosts", "<dim>Rechtsklick");
             case MENU_GAME -> tagged(new ItemStack(Material.RECOVERY_COMPASS), id, "<pri><bold>Spielmenü",
@@ -191,6 +195,7 @@ public final class GameItems {
                 "<ok>Du bist bereit.", "<dim>Rechtsklick zum Zurücknehmen");
         p.getInventory().setItem(6, readyItem);
         if (plugin.getConfig().getBoolean("coins.enabled", true)) p.getInventory().setItem(5, create(MENU_SHOP));
+        if (p.hasPermission("missilewars.start")) p.getInventory().setItem(7, create(MENU_VIPSTART));
         Material wool = team == Team.GREEN ? Material.LIME_WOOL : Material.RED_WOOL;
         p.getInventory().setItem(0, tagged(new ItemStack(wool), MENU_TEAM, "<acc><bold>Team wählen",
                 "<mut>Rechtsklick"));
@@ -214,6 +219,11 @@ public final class GameItems {
         p.getInventory().setItem(0, bow);
         int arrows = plugin.getConfig().getInt("start-arrows", 3);
         if (arrows > 0) p.getInventory().setItem(8, new ItemStack(Material.ARROW, arrows));
+        if (plugin.getConfig().getBoolean("coins.enabled", true)) {
+            ItemStack shop = tagged(new ItemStack(Material.EMERALD), MENU_SHOP, "<ok><bold>Runden-Shop",
+                    "<mut>Raketen & Items gegen Coins", "<dim>Rechtsklick oder Taste F");
+            p.getInventory().setItem(6, shop);
+        }
 
         p.getInventory().setChestplate(armor(Material.LEATHER_CHESTPLATE, team));
         p.getInventory().setLeggings(armor(Material.LEATHER_LEGGINGS, team));

@@ -2,7 +2,7 @@
 #  MissileWars – Konfiguration
 # ─────────────────────────────────────────────
 
-config-version: 4
+config-version: 5
 
 # ── Einzelspiel ─────────────────────────────────────────────────
 # Es gibt immer nur EINE Runde. Spieler kommen beim Joinen automatisch rein,
@@ -51,6 +51,49 @@ coins:
   missile: 1          # pro gestarteter Rakete
   first-blood: 5
   streak: 15          # bei 3/5/7/10er-Serie
+  assist: 4
+  revenge: 8
+  intercept: 6        # gegnerische Rakete abgefangen/entschärft
+  airdrop: 15
+
+# ── Runden-Shop (Smaragd in der Hotbar oder Taste F) ───────────
+shop:
+  round-limit: 10         # Käufe pro Spieler und Runde
+  round-items:            # Item: Preis in Coins
+    tomahawk: 30
+    lightning: 20
+    interceptor: 25
+    arrow: 25
+    gemini: 40
+    guardian: 40
+    shieldbuster: 45
+    juggernaut: 90
+    shield: 20
+    platform: 20
+    fireball: 15
+    windcharge: 15
+    enderpearl: 30
+    arrows: 10
+
+# ── VIP / Premium ───────────────────────────────────────────────
+vip:
+  coin-multiplier: 1.5    # mit Recht missilewars.vip
+  start-min-players: 2    # Start-Block (missilewars.start) braucht so viele Spieler
+  start-countdown: 10
+
+# ── Extras ──────────────────────────────────────────────────────
+airdrop:
+  interval: 90            # Sekunden zwischen Airdrops (0 = aus), abwechselnd bei beiden Teams
+events:
+  interval: 150           # Zufalls-Events: Raketenregen, Doppelte Coins, Turbo, Mondschwerkraft, Item-Flut
+bounty:
+  enabled: true           # Kopfgeld ab 3er-Serie (Spieler leuchtet)
+  base: 25
+  per-kill: 10
+daily:
+  base: 50                # Tagesbelohnung, +per-day je Tag in Folge (max. 7), VIP x2
+  per-day: 15
+map-rating: true          # nach der Runde Map bewerten (👍/👎)
 
 respawn-delay: 3          # Sekunden als Zuschauer nach dem Tod (0 = sofort)
 time-limit-minutes: 15    # danach gewinnt das Team mit dem intakteren Portal (0 = aus)

@@ -595,6 +595,9 @@ public final class Game {
                     itemTimer = interval();
                     for (Player p : players()) if (!respawning.contains(p.getUniqueId())) giveItem(p);
                 }
+                tickAirdrops();
+                tickEvents();
+                if (seconds % 60 == 0) world.setTime(6000);
                 checkAfk();
                 if (state != State.RUNNING) return;
                 checkTimeLimit();
@@ -623,6 +626,7 @@ public final class Game {
     private int interval() {
         int base = Math.max(1, plugin.getConfig().getInt("item-interval", 15));
         if (suddenDeath) base = Math.max(1, (int) Math.round(base * plugin.getConfig().getDouble("sudden-death.item-factor", 0.5)));
+        if ("fast_items".equals(activeEvent)) base = Math.max(1, base / 2);
         return base;
     }
 
@@ -631,6 +635,7 @@ public final class Game {
         bossBar.progress(Math.max(0f, Math.min(1f, itemTimer / (float) iv)));
         bossBar.color(suddenDeath ? BossBar.Color.RED : BossBar.Color.YELLOW);
         String prefix = suddenDeath ? "<bad><bold>SUDDEN DEATH</bold> <dim>| " : "";
+        if (activeEvent != null) prefix += "<info>⚡ " + eventName(activeEvent) + " <dim>(" + eventLeft + "s) | ";
         bossBar.name(Msg.mm(prefix + "<mut>Nächstes Item in <acc>" + itemTimer + "s"));
     }
 
@@ -711,6 +716,15 @@ public final class Game {
                 }
                 if (r == Missile.Result.STOPPED && m.owner() != null && m.owner().isOnline()) {
                     m.owner().sendActionBar(Msg.mm("<mut>Deine " + m.type().displayName() + " wurde gestoppt."));
+                }
+                if (r == Missile.Result.STOPPED && m.interceptedBy() != null) {
+                    Player by = Bukkit.getPlayer(m.interceptedBy());
+                    if (by != null && team(by) != null) {
+                        plugin.stats().add(by, Stat.INTERCEPTS, 1);
+                        plugin.shop().reward(by, "intercept", "Rakete abgefangen");
+                        by.showTitle(Title.title(Component.empty(), Msg.mm("<info>✈ " + m.type().displayName() + " abgefangen!"),
+                                Title.Times.times(Duration.ZERO, Duration.ofMillis(1200), Duration.ofMillis(300))));
+                    }
                 }
                 if (r == Missile.Result.EXPLODED && m.owner() != null) {
                     Team defender = map.forward(Team.GREEN) == m.dir() ? Team.RED : Team.GREEN;
@@ -865,6 +879,13 @@ public final class Game {
             for (Player p : everyone()) p.playSound(p.getLocation(), Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 0.4f, 1.4f);
         }
         int streak = streaks.merge(k.getUniqueId(), 1, Integer::sum);
+        plugin.stats().max(k, Stat.BEST_STREAK, streak);
+        if (streak >= 3 && plugin.getConfig().getBoolean("bounty.enabled", true)) {
+            int amount = plugin.getConfig().getInt("bounty.base", 25) + (streak - 3) * plugin.getConfig().getInt("bounty.per-kill", 10);
+            bounties.put(k.getUniqueId(), amount);
+            k.setGlowing(true);
+            broadcast("<acc>🎯 Kopfgeld auf <txt>" + Msg.esc(k.getName()) + "<mut>: <acc>" + amount + " Coins<mut>! (leuchtet)");
+        }
         if (!plugin.getConfig().getBoolean("killstreaks.enabled", true)) return;
         String title = switch (streak) {
             case 3 -> "<acc>Killing Spree";
@@ -922,6 +943,7 @@ public final class Game {
     public void recordAttack(Player victim, Player attacker) {
         lastAttacker.put(victim.getUniqueId(), attacker.getUniqueId());
         lastAttackTime.put(victim.getUniqueId(), System.currentTimeMillis());
+        damageLog.computeIfAbsent(victim.getUniqueId(), k -> new HashMap<>()).put(attacker.getUniqueId(), System.currentTimeMillis());
     }
 
     /** "Tod" ohne Todesbildschirm: Nachricht, zurück zum Spawn, heilen. */
@@ -940,9 +962,38 @@ public final class Game {
                 k.playSound(k.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1.2f);
                 killerP = k;
                 plugin.shop().reward(k, "kill", "Kill");
+                // Rache
+                if (p.getUniqueId().equals(lastKilledBy.get(k.getUniqueId()))) {
+                    lastKilledBy.remove(k.getUniqueId());
+                    broadcast("<pri><bold>RACHE!</bold> <txt>" + Msg.esc(k.getName()) + " <mut>rächt sich an <txt>" + Msg.esc(p.getName()) + "<mut>.");
+                    plugin.shop().reward(k, "revenge", "Rache");
+                }
+                lastKilledBy.put(p.getUniqueId(), k.getUniqueId());
+                // Kopfgeld
+                Integer bounty = bounties.remove(p.getUniqueId());
+                if (bounty != null) {
+                    plugin.shop().give(k, bounty, "Kopfgeld");
+                    broadcast("<acc>💰 <txt>" + Msg.esc(k.getName()) + " <mut>kassiert das Kopfgeld von <acc>" + bounty
+                            + " Coins <mut>auf <txt>" + Msg.esc(p.getName()) + "<mut>!");
+                }
                 onKill(k);
             }
         }
+        // Assists: alle anderen Gegner, die in den letzten 10 s Schaden gemacht haben
+        Map<UUID, Long> log = damageLog.remove(p.getUniqueId());
+        if (log != null) {
+            long now = System.currentTimeMillis();
+            for (Map.Entry<UUID, Long> d : log.entrySet()) {
+                if (now - d.getValue() > 10_000) continue;
+                Player a = Bukkit.getPlayer(d.getKey());
+                if (a == null || a.equals(killerP) || a.equals(p) || team(a) == null || team(a) == t) continue;
+                roundAssists.merge(a.getUniqueId(), 1, Integer::sum);
+                plugin.stats().add(a, Stat.ASSISTS, 1);
+                plugin.shop().reward(a, "assist", "Assist");
+            }
+        }
+        if (bounties.remove(p.getUniqueId()) != null) broadcast("<mut>Das Kopfgeld auf <txt>" + Msg.esc(p.getName()) + " <mut>verfällt.");
+        p.setGlowing(false);
         lastAttacker.remove(p.getUniqueId());
         lastAttackTime.remove(p.getUniqueId());
         round(p.getUniqueId())[1]++;
@@ -1238,6 +1289,7 @@ public final class Game {
 
         double removeBeyond = map.along(map.portal(t.other())) + dir * 12;
         int speed = plugin.getConfig().getInt("missile.speed." + type.id(), 4);
+        if ("turbo".equals(activeEvent)) speed = Math.max(1, speed / 2);
         Missile.Settings settings = new Missile.Settings() {
             public int fuseTicks() { return plugin.getConfig().getInt("missile.fuse-ticks", 60); }
             public int maxSteps() { return plugin.getConfig().getInt("missile.max-steps", 260); }
@@ -1264,6 +1316,7 @@ public final class Game {
                 if (b.getType().isAir()) {
                     b.setType(Math.abs(dx) == 2 || Math.abs(dz) == 2 ? team.glass() : Material.SLIME_BLOCK, false);
                     placed.add(b);
+                    this.placed.add(b);
                 }
             }
         }
@@ -1277,6 +1330,7 @@ public final class Game {
         world.playSound(p.getLocation(), Sound.BLOCK_SLIME_BLOCK_PLACE, 1f, 0.8f);
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             for (Block b : placed) {
+                this.placed.remove(b);
                 if (b.getType() == Material.SLIME_BLOCK || b.getType() == team.glass()) b.setType(Material.AIR, false);
             }
         }, 160L);
@@ -1291,11 +1345,244 @@ public final class Game {
         for (int dx = -r; dx <= r; dx++) {
             for (int dy = -r; dy <= r; dy++) {
                 if (dx * dx + dy * dy > r * r + 1) continue;
-                Block b = c.getRelative(dx, dy, 0);
-                if (b.getType().isAir()) b.setType(team.glass(), false);
+                Block b = map.axisX() ? c.getRelative(0, dy, dx) : c.getRelative(dx, dy, 0);
+                if (b.getType().isAir()) {
+                    b.setType(team.glass(), false);
+                    placed.add(b);
+                }
             }
         }
         world.playSound(center, Sound.BLOCK_GLASS_PLACE, 1f, 1f);
+    }
+
+    // ── Spieler-Blöcke, Abfangen ─────────────────────────────────────
+
+    /** Von Schild/Plattform gesetzt (darf abgebaut werden, im Gegensatz zum Arena-Glas). */
+    public boolean isPlaced(Block b) {
+        return placed.contains(b);
+    }
+
+    public void unmarkPlaced(Block b) {
+        placed.remove(b);
+    }
+
+    /** Team, dem eine Rakete gehört (aus der Flugrichtung). */
+    private Team missileTeam(Missile m) {
+        return map.forward(Team.GREEN) == m.dir() ? Team.GREEN : Team.RED;
+    }
+
+    /** Explosion oder Abbau durch "by": trifft es den Antrieb einer gegnerischen Rakete? */
+    public void creditIntercept(Player by, java.util.Collection<Block> blocks) {
+        if (by == null || state != State.RUNNING) return;
+        Team bt = team(by);
+        if (bt == null) return;
+        for (Missile m : missiles) {
+            if (missileTeam(m) != bt && m.hitsEngine(blocks)) m.interceptedBy(by.getUniqueId());
+        }
+    }
+
+    public void forceTeam(Player p, Team t) {
+        if (!teams.containsKey(p.getUniqueId())) {
+            spectators.remove(p.getUniqueId());
+        }
+        teams.put(p.getUniqueId(), t);
+        setBoardTeam(p, t);
+        if (state == State.RUNNING) {
+            p.setGameMode(GameMode.SURVIVAL);
+            PlayerSnapshot.reset(p);
+            plugin.items().giveKit(p, t);
+            giveCompass(p, t);
+            p.teleport(map.spawn(t).toLocation(world));
+        } else {
+            giveLobbyItems(p, t);
+        }
+        Msg.send(p, "<acc>Ein Teammitglied hat dich in Team " + t.colored() + " <acc>gesetzt.");
+        updateBoard();
+    }
+
+    // ── VIP-Start ────────────────────────────────────────────────────
+
+    public void vipStart(Player p) {
+        if (state != State.WAITING && state != State.COUNTDOWN) return;
+        if (!p.hasPermission("missilewars.start")) {
+            Msg.send(p, "<bad>Nur für VIP/Premium.");
+            return;
+        }
+        int need = Math.max(2, plugin.getConfig().getInt("vip.start-min-players", 2));
+        if (teams.size() < need) {
+            Msg.send(p, "<bad>Es müssen mindestens " + need + " Spieler da sein.");
+            return;
+        }
+        if (vipStartUsed) {
+            Msg.send(p, "<bad>Der Start-Block wurde in dieser Runde schon benutzt.");
+            return;
+        }
+        vipStartUsed = true;
+        int to = plugin.getConfig().getInt("vip.start-countdown", 10);
+        state = State.COUNTDOWN;
+        if (countdown <= 0 || countdown > to) countdown = to;
+        broadcast("<gradient:#FFC145:#FF6B35><bold>VIP</bold></gradient> <txt>" + Msg.esc(p.getName()) + " <mut>hat die Runde gestartet! <dim>(" + countdown + " s)");
+        for (Player o : everyone()) o.playSound(o.getLocation(), Sound.BLOCK_BEACON_ACTIVATE, 0.8f, 1.4f);
+        updateBoard();
+    }
+
+    // ── Runden-Shop ──────────────────────────────────────────────────
+
+    public int purchasesLeft(Player p) {
+        return Math.max(0, plugin.getConfig().getInt("shop.round-limit", 10) - purchases.getOrDefault(p.getUniqueId(), 0));
+    }
+
+    public void countPurchase(Player p) {
+        purchases.merge(p.getUniqueId(), 1, Integer::sum);
+    }
+
+    // ── Airdrops ─────────────────────────────────────────────────────
+
+    private void tickAirdrops() {
+        int interval = plugin.getConfig().getInt("airdrop.interval", 90);
+        if (interval <= 0) return;
+        if (airdropTimer < 0) airdropTimer = interval;
+        for (Block b : new ArrayList<>(airdrops)) {
+            if (b.getType() != Material.CHEST) {
+                airdrops.remove(b);
+                continue;
+            }
+            world.spawnParticle(org.bukkit.Particle.END_ROD, b.getLocation().add(0.5, 1.4, 0.5), 3, 0.15, 0.6, 0.15, 0.01);
+        }
+        if (--airdropTimer > 0) return;
+        airdropTimer = interval;
+        spawnAirdrop(airdropCount++ % 2 == 0 ? Team.GREEN : Team.RED);
+    }
+
+    private void spawnAirdrop(Team t) {
+        java.util.concurrent.ThreadLocalRandom r = java.util.concurrent.ThreadLocalRandom.current();
+        Location spawn = map.spawn(t).toLocation(world);
+        int lat = r.nextInt(-6, 7);
+        Block col = map.axisX() ? spawn.getBlock().getRelative(0, 0, lat) : spawn.getBlock().getRelative(lat, 0, 0);
+        Block target = null;
+        for (int dy = 3; dy >= -6; dy--) {
+            Block b = col.getRelative(0, dy, 0);
+            if (b.getType().isSolid() && b.getRelative(0, 1, 0).getType().isAir() && b.getRelative(0, 2, 0).getType().isAir()) {
+                target = b.getRelative(0, 1, 0);
+                break;
+            }
+        }
+        if (target == null) target = spawn.getBlock();
+        final Block land = target;
+        Location start = land.getLocation().add(0, 22, 0);
+        org.bukkit.entity.BlockDisplay crate = world.spawn(start, org.bukkit.entity.BlockDisplay.class, d -> {
+            d.setBlock(Material.CHEST.createBlockData());
+            d.setPersistent(false);
+            d.setGlowing(true);
+            d.setGlowColorOverride(org.bukkit.Color.fromRGB(0xFFC145));
+            d.setTeleportDuration(2);
+        });
+        broadcast("<acc>📦 Ein Airdrop fällt bei Team " + t.colored() + "<acc>! <mut>Wer ihn öffnet, kriegt die Beute.");
+        for (Player p : everyone()) p.playSound(p.getLocation(), Sound.ITEM_ELYTRA_FLYING, 0.3f, 1.6f);
+        for (int i = 1; i <= 22; i++) {
+            final int step = i;
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (!crate.isValid() || shutDown) return;
+                Location l = start.clone().subtract(0, step, 0);
+                crate.teleport(l);
+                world.spawnParticle(org.bukkit.Particle.CLOUD, l.clone().add(0.5, 1.2, 0.5), 3, 0.3, 0.1, 0.3, 0.01);
+                if (step == 22) {
+                    crate.remove();
+                    if (land.getType().isAir()) {
+                        land.setType(Material.CHEST, false);
+                        airdrops.add(land);
+                        world.playSound(land.getLocation(), Sound.BLOCK_ANVIL_LAND, 0.8f, 1.2f);
+                        world.spawnParticle(org.bukkit.Particle.FIREWORK, land.getLocation().add(0.5, 0.5, 0.5), 30, 0.4, 0.4, 0.4, 0.1);
+                    }
+                }
+            }, i * 2L);
+        }
+    }
+
+    public boolean isAirdrop(Block b) {
+        return airdrops.contains(b);
+    }
+
+    public void openAirdrop(Player p, Block b) {
+        if (!airdrops.remove(b) || team(p) == null || state != State.RUNNING) return;
+        b.setType(Material.AIR, false);
+        java.util.List<String> rare = java.util.List.of("juggernaut", "hydra", "cluster", "shieldbuster", "enderpearl", "platform");
+        String bonus = rare.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(rare.size()));
+        ItemStack it = plugin.items().create(bonus);
+        if (it != null) p.getInventory().addItem(it);
+        giveItem(p);
+        giveItem(p);
+        plugin.stats().add(p, Stat.AIRDROPS, 1);
+        plugin.shop().reward(p, "airdrop", "Airdrop");
+        world.spawnParticle(org.bukkit.Particle.TOTEM_OF_UNDYING, b.getLocation().add(0.5, 0.8, 0.5), 40, 0.4, 0.5, 0.4, 0.3);
+        world.playSound(b.getLocation(), Sound.BLOCK_CHEST_OPEN, 1f, 1f);
+        broadcast("<txt>" + Msg.esc(p.getName()) + " <mut>hat den Airdrop geschnappt!");
+    }
+
+    // ── Zufalls-Events ───────────────────────────────────────────────
+
+    private static final java.util.List<String> EVENTS = java.util.List.of("missile_rain", "double_coins", "turbo", "low_gravity", "fast_items");
+
+    private static String eventName(String id) {
+        return switch (id) {
+            case "missile_rain" -> "Raketenregen";
+            case "double_coins" -> "Doppelte Coins";
+            case "turbo" -> "Turbo-Raketen";
+            case "low_gravity" -> "Mondschwerkraft";
+            case "fast_items" -> "Item-Flut";
+            default -> id;
+        };
+    }
+
+    public double coinMultiplier() {
+        return "double_coins".equals(activeEvent) ? 2.0 : 1.0;
+    }
+
+    private void tickEvents() {
+        int interval = plugin.getConfig().getInt("events.interval", 150);
+        if (interval <= 0) return;
+        if (activeEvent != null && --eventLeft <= 0) {
+            broadcast("<mut>Event <info>" + eventName(activeEvent) + " <mut>ist vorbei.");
+            activeEvent = null;
+        }
+        if (eventTimer < 0) eventTimer = interval;
+        if (--eventTimer > 0 || activeEvent != null) return;
+        eventTimer = interval;
+        String id = EVENTS.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(EVENTS.size()));
+        String desc;
+        switch (id) {
+            case "missile_rain" -> {
+                desc = "Jeder bekommt eine Rakete!";
+                java.util.List<String> m = java.util.List.of("tomahawk", "lightning", "gemini", "hydra", "drill", "cluster", "arrow");
+                for (Player p : players()) {
+                    ItemStack it = plugin.items().create(m.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(m.size())));
+                    if (it != null) p.getInventory().addItem(it);
+                }
+                eventLeft = 1;
+            }
+            case "double_coins" -> { desc = "60 s lang doppelte Coins."; eventLeft = 60; }
+            case "turbo" -> { desc = "45 s lang fliegen neue Raketen doppelt so schnell."; eventLeft = 45; }
+            case "low_gravity" -> {
+                desc = "30 s Sprungkraft & langsames Fallen.";
+                eventLeft = 30;
+                for (Player p : players()) {
+                    p.addPotionEffect(new org.bukkit.potion.PotionEffect(org.bukkit.potion.PotionEffectType.JUMP_BOOST, 30 * 20, 2, false, true, true));
+                    p.addPotionEffect(new org.bukkit.potion.PotionEffect(org.bukkit.potion.PotionEffectType.SLOW_FALLING, 30 * 20, 0, false, true, true));
+                }
+            }
+            default -> {
+                desc = "60 s lang kommen Items doppelt so schnell.";
+                eventLeft = 60;
+                itemTimer = Math.min(itemTimer, Math.max(1, plugin.getConfig().getInt("item-interval", 20) / 2));
+            }
+        }
+        activeEvent = id;
+        broadcast("<info><bold>⚡ EVENT:</bold> <txt>" + eventName(id) + " <dim>– <mut>" + desc);
+        for (Player p : everyone()) {
+            p.showTitle(Title.title(Msg.mm("<info><bold>" + eventName(id)), Msg.mm("<mut>" + desc),
+                    Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(2), Duration.ofMillis(400))));
+            p.playSound(p.getLocation(), Sound.BLOCK_BEACON_POWER_SELECT, 0.8f, 1.3f);
+        }
     }
 
     // ── Ende ─────────────────────────────────────────────────────────
@@ -1314,6 +1601,17 @@ public final class Game {
             p.hideBossBar(bossBar);
         }
         sendSummary();
+        // Map bewerten
+        if (plugin.getConfig().getBoolean("map-rating", true)) {
+            Component rate = Msg.prefixed("Wie fandest du <txt>" + Msg.esc(map.name()) + "<mut>? ")
+                    .append(Msg.mm("<ok><bold>[👍 Gut]").clickEvent(ClickEvent.runCommand("/mw rate gut")))
+                    .append(Component.space())
+                    .append(Msg.mm("<bad><bold>[👎 Schlecht]").clickEvent(ClickEvent.runCommand("/mw rate schlecht")));
+            for (Player p : players()) {
+                plugin.games().allowRating(p, map.name());
+                p.sendMessage(rate);
+            }
+        }
         plugin.stats().save();
         for (Player p : everyone()) {
             boolean won = team(p) == winner;
@@ -1371,8 +1669,8 @@ public final class Game {
             for (Component c : lines) p.sendMessage(c);
             int[] own = round.get(p.getUniqueId());
             if (own != null) {
-                p.sendMessage(Msg.mm("  <mut>Du: <ok>" + own[0] + " Kills <dim>| <bad>" + own[1]
-                        + " Tode <dim>| <info>" + own[2] + " Raketen"));
+                p.sendMessage(Msg.mm("  <mut>Du: <ok>" + own[0] + " Kills <dim>| <acc>" + roundAssists.getOrDefault(p.getUniqueId(), 0)
+                        + " Assists <dim>| <bad>" + own[1] + " Tode <dim>| <info>" + own[2] + " Raketen"));
             }
         }
     }
@@ -1385,6 +1683,18 @@ public final class Game {
     private boolean readyTriggered;
     private final Set<UUID> respawning = new HashSet<>();
     private final Map<UUID, Set<String>> boosts = new HashMap<>();
+    // 2.3: Shop, Airdrops, Events, Kopfgeld, Assists, Rache, Abfangen, VIP
+    private final Set<Block> placed = new HashSet<>();
+    private final Set<Block> airdrops = new HashSet<>();
+    private final Map<UUID, Integer> bounties = new HashMap<>();
+    private final Map<UUID, Map<UUID, Long>> damageLog = new HashMap<>();
+    private final Map<UUID, UUID> lastKilledBy = new HashMap<>();
+    private final Map<UUID, Integer> roundAssists = new HashMap<>();
+    private final Map<UUID, Integer> purchases = new HashMap<>();
+    private int airdropTimer = -1, airdropCount;
+    private int eventTimer = -1, eventLeft;
+    private String activeEvent;
+    private boolean vipStartUsed;
     private final Map<UUID, Long> lastActive = new HashMap<>();
     private final Map<UUID, Integer> streaks = new HashMap<>();
 

@@ -85,7 +85,7 @@ public final class NameTags implements Listener {
         int weight = Math.max(0, Math.min(999, ranks.weight(p)));
         int teamOrder = team == null ? 0 : team == de.crafterteam.missilewars.game.Team.GREEN ? 2000 : 1000;
         p.setPlayerListOrder(teamOrder + weight);
-        p.playerListName(pre.append(Msg.mm(team == null ? "<dim>" + Msg.esc(p.getName())
+        p.playerListName(pre.append(Msg.mm(plugin.progression().badge(p) + " ")).append(Msg.mm(team == null ? "<dim>" + Msg.esc(p.getName())
                 : "<" + team.tag() + ">" + Msg.esc(p.getName()))).append(suffix(p)));
     }
 
@@ -110,7 +110,8 @@ public final class NameTags implements Listener {
         st.suffix(suffix(p).equals(Component.empty()) ? Component.empty() : Component.space().append(suffix(p)));
         if (!st.hasEntry(p.getName())) st.addEntry(p.getName());
         p.setPlayerListOrder(weight);
-        p.playerListName(pre.append(Component.text(p.getName(), NamedTextColor.WHITE)).append(suffix(p)));
+        p.playerListName(pre.append(Msg.mm(plugin.progression().badge(p) + " "))
+                .append(Component.text(p.getName(), NamedTextColor.WHITE)).append(suffix(p)));
     }
 
     private void updateLobbyPlayers() {

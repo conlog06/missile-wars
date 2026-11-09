@@ -31,6 +31,8 @@ public final class MissileWarsPlugin extends JavaPlugin {
     private de.crafterteam.missilewars.network.ServerMode serverMode;
     private de.crafterteam.missilewars.rank.NameTags nameTags;
     private de.crafterteam.missilewars.shop.Shop shop;
+    private de.crafterteam.missilewars.stats.Progression progression;
+    private de.crafterteam.missilewars.staff.StaffMode staff;
 
     @Override
     public void onEnable() {
@@ -59,6 +61,9 @@ public final class MissileWarsPlugin extends JavaPlugin {
         serverMode = new de.crafterteam.missilewars.network.ServerMode(this);
         nameTags = new de.crafterteam.missilewars.rank.NameTags(this);
         shop = new de.crafterteam.missilewars.shop.Shop(this);
+        progression = new de.crafterteam.missilewars.stats.Progression(this);
+        staff = new de.crafterteam.missilewars.staff.StaffMode(this);
+        getServer().getPluginManager().registerEvents(staff, this);
         maps.load();
         stats.load();
         signs.load();
@@ -86,6 +91,7 @@ public final class MissileWarsPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (staff != null) staff.disableAll();
         if (games != null) games.shutdownAll();
         if (preview != null) preview.hideAll();
         if (holograms != null) holograms.despawnAll();
@@ -101,6 +107,8 @@ public final class MissileWarsPlugin extends JavaPlugin {
     public de.crafterteam.missilewars.network.ServerMode serverMode() { return serverMode; }
     public de.crafterteam.missilewars.rank.NameTags nameTags() { return nameTags; }
     public de.crafterteam.missilewars.shop.Shop shop() { return shop; }
+    public de.crafterteam.missilewars.stats.Progression progression() { return progression; }
+    public de.crafterteam.missilewars.staff.StaffMode staff() { return staff; }
     public MapManager maps() { return maps; }
     public GameManager games() { return games; }
     public GameItems items() { return items; }

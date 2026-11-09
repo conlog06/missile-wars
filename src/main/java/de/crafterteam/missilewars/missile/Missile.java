@@ -111,6 +111,25 @@ public final class Missile {
         return axisX ? new Location(world, alongC, y, latC) : new Location(world, latC, y, alongC);
     }
 
+    private java.util.UUID interceptedBy;
+
+    /** Trifft einer dieser Blöcke den Antrieb (also kein TNT) dieser Rakete? */
+    public boolean hitsEngine(java.util.Collection<Block> blocks) {
+        for (Block b : blocks) {
+            Material m = parts.get(new Pos(b.getX(), b.getY(), b.getZ()));
+            if (m != null && m != Material.TNT && b.getWorld().equals(world)) return true;
+        }
+        return false;
+    }
+
+    public java.util.UUID interceptedBy() {
+        return interceptedBy;
+    }
+
+    public void interceptedBy(java.util.UUID id) {
+        if (interceptedBy == null) interceptedBy = id;
+    }
+
     private boolean warned;
     private int frontZ;
     private double centerX, centerY;

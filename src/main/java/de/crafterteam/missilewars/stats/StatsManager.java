@@ -21,7 +21,8 @@ public final class StatsManager {
 
     public enum Stat {
         WINS("Siege"), LOSSES("Niederlagen"), KILLS("Kills"), DEATHS("Tode"),
-        GAMES("Runden"), MISSILES("Raketen"), PORTALS("Portale zerstört"), COINS("Coins");
+        GAMES("Runden"), MISSILES("Raketen"), PORTALS("Portale zerstört"), COINS("Coins"),
+        ASSISTS("Assists"), INTERCEPTS("Abgefangen"), AIRDROPS("Airdrops"), BEST_STREAK("Beste Serie");
 
         private final String label;
 
@@ -48,6 +49,10 @@ public final class StatsManager {
                 case "portals", "portale" -> PORTALS;
                 case "losses", "niederlagen" -> LOSSES;
                 case "coins", "münzen" -> COINS;
+                case "assists" -> ASSISTS;
+                case "intercepts", "abgefangen" -> INTERCEPTS;
+                case "airdrops" -> AIRDROPS;
+                case "streak", "serie" -> BEST_STREAK;
                 default -> null;
             };
         }
@@ -121,8 +126,19 @@ public final class StatsManager {
     public void add(Player p, Stat stat, int amount) {
         Entry e = entries.computeIfAbsent(p.getUniqueId(), id -> new Entry(id, p.getName()));
         e.name = p.getName();
+        int levelBefore = stat == Stat.COINS ? 0 : de.crafterteam.missilewars.stats.Progression.level(e);
         e.values.merge(stat, amount, Integer::sum);
         dirty = true;
+        if (stat != Stat.COINS && plugin.progression() != null) plugin.progression().afterStat(p, e, levelBefore);
+    }
+
+    /** Höchstwert speichern (z. B. beste Killserie). */
+    public void max(Player p, Stat stat, int value) {
+        Entry e = entries.computeIfAbsent(p.getUniqueId(), id -> new Entry(id, p.getName()));
+        if (value <= e.get(stat)) return;
+        e.values.put(stat, value);
+        dirty = true;
+        if (plugin.progression() != null) plugin.progression().afterStat(p, e, Progression.level(e));
     }
 
     public Entry entry(Player p) {

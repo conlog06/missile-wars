@@ -70,6 +70,29 @@ public final class MwCommand implements BasicCommand {
             case "holo", "hologram" -> holo(sender, args);
             case "vote", "abstimmen" -> vote(sender, args);
             case "shop" -> { if (sender instanceof Player p) plugin.shop().open(p); }
+            case "rate", "bewerten" -> {
+                if (sender instanceof Player p && args.length > 1) {
+                    String v = args[1].toLowerCase(Locale.ROOT);
+                    plugin.games().rate(p, v.equals("gut") || v.equals("up") || v.equals("+"));
+                }
+            }
+            case "daily", "täglich", "belohnung" -> { if (sender instanceof Player p) plugin.progression().claimDaily(p); }
+            case "erfolge", "achievements" -> { if (sender instanceof Player p) plugin.progression().openAchievements(p); }
+            case "level" -> {
+                if (sender instanceof Player p) {
+                    var e = plugin.stats().entry(p);
+                    int xp = de.crafterteam.missilewars.stats.Progression.xp(e);
+                    int lvl = de.crafterteam.missilewars.stats.Progression.level(xp);
+                    Msg.send(p, "Level <acc>" + lvl + " <dim>(" + xp + " XP, nächstes bei "
+                            + de.crafterteam.missilewars.stats.Progression.xpFor(lvl + 1) + ")");
+                }
+            }
+            case "mod", "staff", "admin" -> {
+                if (sender instanceof Player p) {
+                    if (!p.hasPermission("missilewars.mod") && !p.hasPermission(ADMIN)) Msg.send(p, "<bad>Keine Berechtigung.");
+                    else plugin.staff().toggle(p);
+                }
+            }
             case "coins", "münzen" -> {
                 if (sender instanceof Player p) Msg.send(p, "Du hast <acc>" + plugin.stats().coins(p) + " Coins<mut>. <dim>/mw shop");
             }
@@ -126,6 +149,9 @@ public final class MwCommand implements BasicCommand {
         s.sendMessage(Msg.mm(" <acc>/mw menu</acc> <mut>– Spielmenü"));
         s.sendMessage(Msg.mm(" <acc>/mw raketen</acc> <mut>– Raketen-Übersicht"));
         s.sendMessage(Msg.mm(" <acc>/mw shop</acc> <mut>– Shop  <dim>|</dim>  <acc>/mw coins</acc> <mut>– Kontostand"));
+        s.sendMessage(Msg.mm(" <acc>/mw daily</acc> <mut>– Tagesbelohnung  <dim>|</dim>  <acc>/mw erfolge</acc> <mut>– Erfolge  <dim>|</dim>  <acc>/mw level"));
+        if (s.hasPermission("missilewars.start")) s.sendMessage(Msg.mm(" <acc>/mw start</acc> <mut>– (VIP) Runde starten"));
+        if (s.hasPermission("missilewars.mod")) s.sendMessage(Msg.mm(" <info>/mw mod</info> <mut>– Mod-Modus (unsichtbar, Werkzeuge)"));
         s.sendMessage(Msg.mm(" <acc>/mw kit</acc> <mut>– Kit wählen  <dim>|</dim>  <acc>/mw bereit</acc> <mut>– bereit melden"));
         s.sendMessage(Msg.mm(" <acc>/mw teleporter</acc> <mut>– (Zuschauer) zu Spielern teleportieren"));
         s.sendMessage(Msg.mm(" <acc>/mw list</acc> <mut>– Maps & Runden"));
@@ -307,8 +333,17 @@ public final class MwCommand implements BasicCommand {
     }
 
     private void start(CommandSender s, String[] args) {
-        if (!admin(s)) return;
         Game g = targetGame(s, args, 1);
+        if (g == null && plugin.games().singleGame()) g = plugin.games().current();
+        if (!s.hasPermission(ADMIN) && !s.hasPermission("missilewars.mod")) {
+            // VIP/Premium: Start-Block-Regeln (Mindestspieler, einmal pro Runde)
+            if (s instanceof Player p && p.hasPermission("missilewars.start") && g != null) {
+                g.vipStart(p);
+                return;
+            }
+            Msg.send(s, "<bad>Keine Berechtigung.");
+            return;
+        }
         if (g == null) {
             Msg.send(s, "<bad>Keine passende Runde gefunden.");
             return;
@@ -619,7 +654,10 @@ public final class MwCommand implements BasicCommand {
         List<String> out = new ArrayList<>();
         boolean admin = s.hasPermission(ADMIN);
         if (args.length == 1) {
-            out.addAll(List.of("join", "spectate", "leave", "team", "vote", "kit", "bereit", "raketen", "shop", "coins", "menu", "teleporter", "list", "stats", "top"));
+            out.addAll(List.of("join", "spectate", "leave", "team", "vote", "kit", "bereit", "raketen", "shop", "coins",
+                    "daily", "erfolge", "level", "menu", "teleporter", "list", "stats", "top"));
+            if (s.hasPermission("missilewars.mod")) out.add("mod");
+            if (s.hasPermission("missilewars.start")) out.add("start");
             if (admin) out.addAll(List.of("start", "stop", "setlobby", "setwaitlobby", "reload", "map", "holo", "givecoins"));
         } else if (args.length == 2) {
             switch (args[0].toLowerCase(Locale.ROOT)) {

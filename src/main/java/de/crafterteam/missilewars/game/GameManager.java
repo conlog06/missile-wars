@@ -43,6 +43,25 @@ public final class GameManager {
         return new ArrayList<>(games.values());
     }
 
+    private final Map<UUID, String> canRate = new HashMap<>();
+
+    void allowRating(Player p, String map) {
+        canRate.put(p.getUniqueId(), map);
+    }
+
+    /** Map nach der Runde bewerten (einmal pro Runde). */
+    public void rate(Player p, boolean up) {
+        String name = canRate.remove(p.getUniqueId());
+        MapConfig m = name == null ? null : plugin.maps().get(name);
+        if (m == null) {
+            de.crafterteam.missilewars.util.Msg.send(p, "<bad>Du kannst gerade keine Map bewerten.");
+            return;
+        }
+        m.rate(up);
+        plugin.maps().save(m);
+        de.crafterteam.missilewars.util.Msg.send(p, "<ok>Danke! <mut>" + m.name() + " hat jetzt <acc>" + m.ratingPercent() + "% <mut>positive Bewertungen.");
+    }
+
     public boolean singleGame() {
         return plugin.getConfig().getBoolean("single-game.enabled", true);
     }
