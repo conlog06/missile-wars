@@ -99,6 +99,15 @@ public final class Game {
     private boolean suddenDeath;
     private final Map<Team, Long> lastWarning = new EnumMap<>(Team.class);
     private final Map<Team, UUID> lastPortalHitter = new EnumMap<>(Team.class);
+    private final Map<Team, Integer> teamPoints = new EnumMap<>(Team.class);
+    private final Map<Team, Map<TeamUpgrade, Integer>> upgrades = new EnumMap<>(Team.class);
+    private final Map<Team, Map<Block, BlockData>> baseGlass = new EnumMap<>(Team.class);
+    private final Map<Block, Team> portalOwner = new HashMap<>();
+    private final Map<Block, BlockData> portalData = new HashMap<>();
+    private final Map<Team, List<Block>> destroyOrder = new EnumMap<>(Team.class);
+    private final Map<UUID, Integer> roundPortalDmg = new HashMap<>();
+    private final Map<UUID, Integer> roundGlass = new HashMap<>();
+    private final Map<UUID, Integer> roundIntercepts = new HashMap<>();
     private final Map<Team, Integer> portalHp = new EnumMap<>(Team.class);
     private final Map<Team, Integer> lastPortalLeft = new EnumMap<>(Team.class);
     private final Map<Team, TextDisplay> portalHolograms = new EnumMap<>(Team.class);
@@ -131,7 +140,7 @@ public final class Game {
         if (map.type() == MapConfig.Type.GENERATED) {
             w = new WorldCreator(worldName).generator(new VoidGenerator()).createWorld();
             if (w == null) throw new GameException("Welt konnte nicht erstellt werden.");
-            ArenaGenerator.build(w, map.distance());
+            ArenaGenerator.build(w, map.distance(), map.theme());
         } else {
             if (!map.ready()) throw new GameException("Map '" + map.name() + "' ist im Setup – erst /mw map finish " + map.name());
             if (Bukkit.getWorld(map.templateWorld()) != null)
@@ -153,7 +162,7 @@ public final class Game {
         }
         w.setAutoSave(false);
         w.setDifficulty(Difficulty.NORMAL);
-        w.setTime(6000);
+        w.setTime(map.type() == MapConfig.Type.GENERATED ? map.theme().time() : 6000);
         w.setStorm(false);
         w.setThundering(false);
         MapConfig.Spawn gs = map.spawn(Team.GREEN);
@@ -181,8 +190,119 @@ public final class Game {
                     }
             if (list.isEmpty()) return false;
             portalBlocks.put(t, list);
+            destroyOrder.put(t, new ArrayList<>());
+            for (Block bl : list) {
+                portalOwner.put(bl, t);
+                portalData.put(bl, bl.getBlockData().clone());
+            }
+            // Basis-Glas merken (für Teampunkte & Glas-Reparatur)
+            Map<Block, BlockData> glass = new HashMap<>();
+            boolean ax = map.axisX();
+            int latMin = map.lateralMin(b) - 8, latMax = map.lateralMax(b) + 8;
+            int along = (int) Math.floor(map.along(b));
+            for (int a = along - 8; a <= along + 8; a++) {
+                for (int l = latMin; l <= latMax; l++) {
+                    for (int y = b.minY() - 5; y <= b.maxY() + 5; y++) {
+                        Block bl = ax ? world.getBlockAt(a, y, l) : world.getBlockAt(l, y, a);
+                        if (bl.getType().name().contains("GLASS")) glass.put(bl, bl.getBlockData().clone());
+                    }
+                }
+            }
+            baseGlass.put(t, glass);
         }
         return true;
+    }
+
+    // ── Teampunkte & Upgrades ────────────────────────────────────────
+
+    public int teamPoints(Team t) {
+        return teamPoints.getOrDefault(t, 0);
+    }
+
+    public void addTeamPoints(Team t, int n) {
+        if (t != null && n > 0) teamPoints.merge(t, n, Integer::sum);
+    }
+
+    public int upgradeLevel(Team t, TeamUpgrade u) {
+        return upgrades.computeIfAbsent(t, k -> new EnumMap<>(TeamUpgrade.class)).getOrDefault(u, 0);
+    }
+
+    public boolean buyUpgrade(Player p, TeamUpgrade u) {
+        Team t = team(p);
+        if (t == null || state != State.RUNNING) return false;
+        int lvl = upgradeLevel(t, u);
+        int cost = u.nextCost(lvl);
+        if (cost < 0) return false;
+        if (teamPoints(t) < cost) {
+            Msg.send(p, "<bad>Zu wenig Teampunkte (" + teamPoints(t) + "/" + cost + ").");
+            return false;
+        }
+        teamPoints.merge(t, -cost, Integer::sum);
+        upgrades.get(t).put(u, lvl + 1);
+        switch (u) {
+            case ARMOR -> { for (Player m : teamPlayers(t)) applyArmor(m, t); }
+            case GLASS_REPAIR -> {
+                int n = 0;
+                for (Map.Entry<Block, BlockData> e : baseGlass.get(t).entrySet()) {
+                    if (e.getKey().getType().isAir()) {
+                        e.getKey().setBlockData(e.getValue(), false);
+                        n++;
+                    }
+                }
+                Msg.send(p, "<ok>" + n + " Glasblöcke repariert.");
+            }
+            case PORTAL_REPAIR -> {
+                List<Block> order = destroyOrder.get(t);
+                int max = Math.max(1, portalBlocks.get(t).size() / 10);
+                int n = 0;
+                for (int i = order.size() - 1; i >= 0 && n < max; i--) {
+                    Block b = order.get(i);
+                    if (!b.getType().isAir()) continue;
+                    b.setBlockData(portalData.get(b), false);
+                    order.remove(i);
+                    n++;
+                }
+                Msg.send(p, "<ok>" + n + " Portalblöcke repariert.");
+            }
+            default -> {
+            }
+        }
+        for (Player m : teamPlayers(t)) {
+            Msg.send(m, "<acc>⬆ <txt>" + Msg.esc(p.getName()) + " <mut>hat <pri>" + u.displayName()
+                    + (u.repeatable() ? "" : " " + (lvl + 1)) + " <mut>gekauft.");
+            m.playSound(m.getLocation(), Sound.BLOCK_BEACON_POWER_SELECT, 0.7f, 1.4f);
+        }
+        updateBoard();
+        return true;
+    }
+
+    private void applyArmor(Player p, Team t) {
+        int lvl = upgradeLevel(t, TeamUpgrade.ARMOR);
+        if (lvl <= 0) return;
+        for (ItemStack it : p.getInventory().getArmorContents()) {
+            if (it == null || it.getType().isAir()) continue;
+            it.editMeta(m -> m.addEnchant(org.bukkit.enchantments.Enchantment.PROTECTION, lvl, true));
+        }
+    }
+
+    /** Explosion: Portal-Treffer protokollieren, Glas der Gegner-Basis → Teampunkte. */
+    public void onExplosion(Player src, java.util.Collection<Block> blocks) {
+        if (state != State.RUNNING) return;
+        Team st = src == null ? null : team(src);
+        for (Block b : blocks) {
+            if (b.getType() == Material.NETHER_PORTAL) {
+                Team owner = portalOwner.get(b);
+                if (owner == null) continue;
+                destroyOrder.get(owner).add(b);
+                if (st != null && st != owner) roundPortalDmg.merge(src.getUniqueId(), 1, Integer::sum);
+            } else if (st != null && b.getType().name().contains("GLASS")) {
+                Team other = st.other();
+                if (baseGlass.containsKey(other) && baseGlass.get(other).containsKey(b)) {
+                    addTeamPoints(st, 1);
+                    roundGlass.merge(src.getUniqueId(), 1, Integer::sum);
+                }
+            }
+        }
     }
 
     private static void copyWorld(Path src, Path dst) throws IOException {
@@ -283,6 +403,7 @@ public final class Game {
         if (running) {
             p.setGameMode(GameMode.SURVIVAL);
             plugin.items().giveKit(p, t);
+            applyArmor(p, t);
             applyCombat(p);
             giveCompass(p, t);
             kit(p).apply(p);
@@ -532,7 +653,20 @@ public final class Game {
 
     // ── Ablauf ───────────────────────────────────────────────────────
 
+    /** Bei wenigen Spielern startet die Runde nur, wenn alle "Bereit" drücken. */
+    private boolean readyRequired() {
+        return !forcedStart && teams.size() <= plugin.getConfig().getInt("ready.required-up-to", 2);
+    }
+
     private void checkStart() {
+        if (state == State.WAITING && teams.size() >= min() && readyRequired()) {
+            if (readyTimer < 0) {
+                readyTimer = plugin.getConfig().getInt("ready.timeout", 60);
+                broadcast("<acc>Drückt auf <ok><bold>Bereit</bold> <acc>(grüner Farbstoff), um zu starten! <mut>Wer in "
+                        + readyTimer + " s nicht bereit ist, fliegt aus der Runde.");
+            }
+            return;
+        }
         if (state == State.WAITING && teams.size() >= min()) {
             state = State.COUNTDOWN;
             countdown = plugin.getConfig().getInt("countdown.normal", 20);
@@ -546,6 +680,8 @@ public final class Game {
     public boolean forceStart() {
         if (state != State.WAITING && state != State.COUNTDOWN) return false;
         if (teams.isEmpty()) return false;
+        forcedStart = true;
+        readyTimer = -1;
         state = State.COUNTDOWN;
         countdown = Math.min(countdown <= 0 ? 5 : countdown, 5);
         return true;
@@ -553,8 +689,18 @@ public final class Game {
 
     private void everySecond() {
         switch (state) {
+            case WAITING -> {
+                checkStart();
+                tickReadyTimer();
+            }
             case COUNTDOWN -> {
                 checkReady();
+                if (readyRequired() && readyCount() < teams.size()) {
+                    state = State.WAITING;
+                    readyTriggered = false;
+                    checkStart();
+                    break;
+                }
                 if (teams.size() < min() && countdown > 5) {
                     state = State.WAITING;
                     readyTriggered = false;
@@ -593,11 +739,16 @@ public final class Game {
                 }
                 if (--itemTimer <= 0) {
                     itemTimer = interval();
-                    for (Player p : players()) if (!respawning.contains(p.getUniqueId())) giveItem(p);
+                    for (Player p : players()) {
+                        if (respawning.contains(p.getUniqueId())) continue;
+                        giveItem(p);
+                        int sup = upgradeLevel(team(p), TeamUpgrade.SUPPLY);
+                        if (sup > 0 && java.util.concurrent.ThreadLocalRandom.current().nextInt(100) < sup * 20) giveItem(p);
+                    }
                 }
                 tickAirdrops();
                 tickEvents();
-                if (seconds % 60 == 0) world.setTime(6000);
+                if (seconds % 60 == 0) world.setTime(map.type() == MapConfig.Type.GENERATED ? map.theme().time() : 6000);
                 checkAfk();
                 if (state != State.RUNNING) return;
                 checkTimeLimit();
@@ -679,6 +830,7 @@ public final class Game {
             p.setGameMode(GameMode.SURVIVAL);
             p.teleport(map.spawn(t).toLocation(world));
             plugin.items().giveKit(p, t);
+            applyArmor(p, t);
             applyCombat(p);
             giveCompass(p, t);
             kit(p).apply(p);
@@ -721,6 +873,8 @@ public final class Game {
                     Player by = Bukkit.getPlayer(m.interceptedBy());
                     if (by != null && team(by) != null) {
                         plugin.stats().add(by, Stat.INTERCEPTS, 1);
+                        roundIntercepts.merge(by.getUniqueId(), 1, Integer::sum);
+                        addTeamPoints(team(by), 5);
                         plugin.shop().reward(by, "intercept", "Rakete abgefangen");
                         by.showTitle(Title.title(Component.empty(), Msg.mm("<info>✈ " + m.type().displayName() + " abgefangen!"),
                                 Title.Times.times(Duration.ZERO, Duration.ofMillis(1200), Duration.ofMillis(300))));
@@ -847,13 +1001,21 @@ public final class Game {
 
     /** Startblock (Heck) einer Rakete aus Blickrichtung bzw. angeklicktem Block. */
     public Block missileOrigin(Player p, Block clicked, BlockFace face) {
-        if (clicked != null && face != null) return clicked.getRelative(face);
-        Block target = p.getTargetBlockExact(5);
-        BlockFace f = p.getTargetBlockFace(5);
-        if (target != null && f != null) return target.getRelative(f);
-        Team t = team(p);
-        int step = (t == null ? 1 : map.forward(t)) * 2;
-        return map.axisX() ? p.getLocation().getBlock().getRelative(step, 0, 0) : p.getLocation().getBlock().getRelative(0, 0, step);
+        Block origin;
+        if (clicked != null && face != null) origin = clicked.getRelative(face);
+        else {
+            Block target = p.getTargetBlockExact(5);
+            BlockFace f = p.getTargetBlockFace(5);
+            if (target != null && f != null) origin = target.getRelative(f);
+            else {
+                Team t = team(p);
+                int step = (t == null ? 1 : map.forward(t)) * 2;
+                origin = map.axisX() ? p.getLocation().getBlock().getRelative(step, 0, 0) : p.getLocation().getBlock().getRelative(0, 0, step);
+            }
+        }
+        // Schleichen = Rakete tiefer setzen
+        if (p.isSneaking()) origin = origin.getRelative(0, -Math.max(1, plugin.getConfig().getInt("missile.sneak-offset", 5)), 0);
+        return origin;
     }
 
     private void updatePreviews() {
@@ -962,6 +1124,7 @@ public final class Game {
                 k.playSound(k.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1.2f);
                 killerP = k;
                 plugin.shop().reward(k, "kill", "Kill");
+                addTeamPoints(team(k), 3);
                 // Rache
                 if (p.getUniqueId().equals(lastKilledBy.get(k.getUniqueId()))) {
                     lastKilledBy.remove(k.getUniqueId());
@@ -1106,6 +1269,7 @@ public final class Game {
         if (teams.size() < min() || readyCount() < teams.size()) return;
         if (readyTriggered) return;            // nur einmal verkürzen (vorher: Endlosschleife bei 0)
         readyTriggered = true;
+        readyTimer = -1;
         if (state == State.WAITING) {
             state = State.COUNTDOWN;
             countdown = 5;
@@ -1113,6 +1277,38 @@ public final class Game {
             countdown = 5;
         }
         broadcast("<ok>Alle sind bereit – es geht gleich los!");
+    }
+
+    private void tickReadyTimer() {
+        if (readyTimer < 0) return;
+        if (teams.size() < min() || !readyRequired()) {
+            readyTimer = -1;
+            return;
+        }
+        if (readyTimer == 30 || readyTimer == 10 || (readyTimer <= 5 && readyTimer > 0)) {
+            for (Player p : players()) {
+                if (ready.contains(p.getUniqueId())) continue;
+                p.showTitle(Title.title(Msg.mm("<acc>Bereit?"), Msg.mm("<mut>Noch <bad>" + readyTimer + " s <mut>– sonst fliegst du raus"),
+                        Title.Times.times(Duration.ZERO, Duration.ofMillis(1100), Duration.ofMillis(200))));
+                p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 0.8f, 0.7f);
+            }
+        }
+        Component bar = Msg.mm("<mut>Bereit: <ok>" + readyCount() + "<dim>/" + teams.size() + " <dim>| <mut>noch <acc>" + readyTimer + " s");
+        for (Player p : players()) p.sendActionBar(bar);
+        if (--readyTimer > 0) return;
+        readyTimer = -1;
+        String action = plugin.getConfig().getString("ready.timeout-action", "leave");
+        for (Player p : new ArrayList<>(players())) {
+            if (ready.contains(p.getUniqueId())) continue;
+            Msg.send(p, "<bad>Du warst nicht bereit und wurdest aus der Runde entfernt. <mut>Mit /mw join kommst du zurück.");
+            leave(p, true);
+            if ("kick".equalsIgnoreCase(action)) {
+                p.kick(Msg.mm("<logo>\n<bad>Du warst nicht rechtzeitig bereit."));
+            } else if ("lobby-server".equalsIgnoreCase(action)) {
+                plugin.serverMode().toLobbyServer(p);
+            }
+            if (shutDown) return;
+        }
     }
 
     public boolean hasBoost(Player p, String id) {
@@ -1290,6 +1486,7 @@ public final class Game {
         double removeBeyond = map.along(map.portal(t.other())) + dir * 12;
         int speed = plugin.getConfig().getInt("missile.speed." + type.id(), 4);
         if ("turbo".equals(activeEvent)) speed = Math.max(1, speed / 2);
+        speed = Math.max(1, speed - upgradeLevel(t, TeamUpgrade.TURBO));
         Missile.Settings settings = new Missile.Settings() {
             public int fuseTicks() { return plugin.getConfig().getInt("missile.fuse-ticks", 60); }
             public int maxSteps() { return plugin.getConfig().getInt("missile.max-steps", 260); }
@@ -1340,7 +1537,7 @@ public final class Game {
     /** Glasschild senkrecht zur Flugachse aufklappen. */
     public void deployShield(Location center, Team team) {
         if (state != State.RUNNING) return;
-        int r = Math.max(1, plugin.getConfig().getInt("shield.radius", 3));
+        int r = Math.max(1, plugin.getConfig().getInt("shield.radius", 3)) + upgradeLevel(team, TeamUpgrade.SHIELDS);
         Block c = center.getBlock();
         for (int dx = -r; dx <= r; dx++) {
             for (int dy = -r; dy <= r; dy++) {
@@ -1391,6 +1588,7 @@ public final class Game {
             p.setGameMode(GameMode.SURVIVAL);
             PlayerSnapshot.reset(p);
             plugin.items().giveKit(p, t);
+            applyArmor(p, t);
             giveCompass(p, t);
             p.teleport(map.spawn(t).toLocation(world));
         } else {
@@ -1418,6 +1616,8 @@ public final class Game {
             return;
         }
         vipStartUsed = true;
+        forcedStart = true;
+        readyTimer = -1;
         int to = plugin.getConfig().getInt("vip.start-countdown", 10);
         state = State.COUNTDOWN;
         if (countdown <= 0 || countdown > to) countdown = to;
@@ -1513,6 +1713,7 @@ public final class Game {
         giveItem(p);
         giveItem(p);
         plugin.stats().add(p, Stat.AIRDROPS, 1);
+        addTeamPoints(team(p), 5);
         plugin.shop().reward(p, "airdrop", "Airdrop");
         world.spawnParticle(org.bukkit.Particle.TOTEM_OF_UNDYING, b.getLocation().add(0.5, 0.8, 0.5), 40, 0.4, 0.5, 0.4, 0.3);
         world.playSound(b.getLocation(), Sound.BLOCK_CHEST_OPEN, 1f, 1f);
@@ -1600,7 +1801,7 @@ public final class Game {
             plugin.preview().hide(p);
             p.hideBossBar(bossBar);
         }
-        sendSummary();
+        sendSummary(winner);
         // Map bewerten
         if (plugin.getConfig().getBoolean("map-rating", true)) {
             Component rate = Msg.prefixed("Wie fandest du <txt>" + Msg.esc(map.name()) + "<mut>? ")
@@ -1622,8 +1823,10 @@ public final class Game {
             p.playSound(p.getLocation(), won ? Sound.UI_TOAST_CHALLENGE_COMPLETE : Sound.ENTITY_WITHER_DEATH, 0.7f, 1f);
             if (team(p) != null) p.setGameMode(GameMode.ADVENTURE);
         }
+        boolean anim = plugin.getConfig().getBoolean("end-animation", true) && portalBlocks.containsKey(winner.other());
+        if (anim) playDestructionAnimation(winner);
         Location fw = map.spawn(winner).toLocation(world).add(0, 2, 0);
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < (anim ? 0 : 4); i++) {
             final int delay = i * 15;
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (world.getPlayers().isEmpty() && delay > 0) return;
@@ -1637,41 +1840,162 @@ public final class Game {
             }, delay);
         }
         updateBoard();
-        Bukkit.getScheduler().runTaskLater(plugin, this::shutdown, 20L * plugin.getConfig().getInt("end-delay", 8));
+        int delay = plugin.getConfig().getInt("end-delay", 8);
+        if (anim) delay = Math.max(delay, 11);
+        Bukkit.getScheduler().runTaskLater(plugin, this::shutdown, 20L * delay);
+    }
+
+    // ── End-Animation: so wurde das Portal zerstört ──────────────────
+
+    private void later(long ticks, Runnable r) {
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!shutDown) r.run();
+        }, ticks);
+    }
+
+    private void playDestructionAnimation(Team winner) {
+        Team loser = winner.other();
+        MapConfig.Box b = map.portal(loser);
+        boolean ax = map.axisX();
+        int f = map.forward(loser);                    // Richtung zum Angreifer
+        Location center = new Location(world, b.centerX(), b.centerY(), b.centerZ());
+        Location cam = ax ? new Location(world, b.centerX() + f * 18, b.centerY() + 1, b.centerZ())
+                : new Location(world, b.centerX(), b.centerY() + 1, b.centerZ() + f * 18);
+        cam.setDirection(center.toVector().subtract(cam.toVector()));
+
+        List<Block> order = new ArrayList<>(destroyOrder.getOrDefault(loser, List.of()));
+        for (Block bl : portalBlocks.get(loser)) if (bl.getType() != Material.NETHER_PORTAL && !order.contains(bl)) order.add(bl);
+
+        for (Player p : everyone()) {
+            p.setGameMode(GameMode.SPECTATOR);
+            p.teleport(cam);
+        }
+        // 1) Glas zwischen Kamera und Portal zerspringt
+        later(12, () -> {
+            int along = (int) Math.floor(map.along(b));
+            for (int a = along + f; a != along + f * 8; a += f) {
+                for (int l = map.lateralMin(b) - 3; l <= map.lateralMax(b) + 3; l++) {
+                    for (int y = b.minY() - 2; y <= b.maxY() + 2; y++) {
+                        Block g = ax ? world.getBlockAt(a, y, l) : world.getBlockAt(l, y, a);
+                        if (!g.getType().name().contains("GLASS")) continue;
+                        if (Math.floorMod(l + y, 3) == 0) world.spawnParticle(org.bukkit.Particle.BLOCK,
+                                g.getLocation().add(0.5, 0.5, 0.5), 4, 0.2, 0.2, 0.2, g.getBlockData());
+                        g.setType(Material.AIR, false);
+                    }
+                }
+            }
+            world.playSound(center, Sound.BLOCK_GLASS_BREAK, 2f, 0.8f);
+        });
+        // 2) Portal wird wiederhergestellt …
+        later(24, () -> {
+            for (Block bl : order) {
+                BlockData d = portalData.get(bl);
+                if (d != null) bl.setBlockData(d, false);
+            }
+            world.playSound(center, Sound.BLOCK_PORTAL_TRIGGER, 1f, 1.4f);
+            for (Player p : everyone()) {
+                p.teleport(cam);
+                p.showTitle(Title.title(Msg.mm("<pri><bold>Wiederholung"),
+                        Msg.mm("<mut>So fiel das Portal von Team " + loser.colored()),
+                        Title.Times.times(Duration.ofMillis(200), Duration.ofMillis(1600), Duration.ofMillis(300))));
+            }
+        });
+        // 3) … und im Zeitraffer in der echten Reihenfolge zerstört
+        int steps = 20;
+        int chunk = Math.max(1, (int) Math.ceil(order.size() / (double) steps));
+        for (int i = 0; i < steps; i++) {
+            final int from = i * chunk;
+            later(40 + i * 4L, () -> {
+                if (from >= order.size()) return;
+                List<Block> part = order.subList(from, Math.min(order.size(), from + chunk));
+                for (Block bl : part) bl.setType(Material.AIR, false);
+                Block first = part.getFirst();
+                world.spawnParticle(org.bukkit.Particle.EXPLOSION, first.getLocation().add(0.5, 0.5, 0.5), 2, 0.6, 0.6, 0.6, 0);
+                world.playSound(first.getLocation(), Sound.ENTITY_GENERIC_EXPLODE, 0.7f, 1.1f);
+            });
+        }
+        // 4) Finale: Rest des Portals bricht zusammen
+        later(130, () -> {
+            for (Block bl : portalBlocks.get(loser)) {
+                if (bl.getType() != Material.NETHER_PORTAL) continue;
+                bl.setType(Material.AIR, false);
+                if (Math.floorMod(bl.getX() + bl.getY() + bl.getZ(), 4) == 0) {
+                    world.spawnParticle(org.bukkit.Particle.REVERSE_PORTAL, bl.getLocation().add(0.5, 0.5, 0.5), 6, 0.3, 0.3, 0.3, 0.05);
+                }
+            }
+            world.spawnParticle(org.bukkit.Particle.EXPLOSION_EMITTER, center, 3, 3, 3, 3, 0);
+            world.playSound(center, Sound.ENTITY_GENERIC_EXPLODE, 2f, 0.6f);
+            world.playSound(center, Sound.BLOCK_END_PORTAL_SPAWN, 1f, 1.2f);
+            for (Player p : everyone()) {
+                boolean won = team(p) == winner;
+                p.showTitle(Title.title(
+                        Msg.mm(won ? "<pri><bold>Portal zerstört!" : team(p) == null ? winner.colored() + " <mut>gewinnt" : "<bad><bold>Euer Portal ist gefallen"),
+                        Msg.mm("<mut>Team " + winner.colored() + " <mut>gewinnt"),
+                        Title.Times.times(Duration.ZERO, Duration.ofSeconds(3), Duration.ofMillis(600))));
+            }
+            for (int i = 0; i < 3; i++) {
+                Location l = center.clone().add((i - 1) * 6, 4, 0);
+                world.spawn(l, Firework.class, fw -> {
+                    FireworkMeta m = fw.getFireworkMeta();
+                    m.addEffect(FireworkEffect.builder().withColor(winner.armorColor())
+                            .with(FireworkEffect.Type.BALL_LARGE).flicker(true).build());
+                    m.setPower(0);
+                    fw.setFireworkMeta(m);
+                });
+            }
+        });
     }
 
     /** Rundenauswertung: Top 3 nach Kills, MVP, eigene Werte. */
-    private void sendSummary() {
-        List<Map.Entry<UUID, int[]>> list = new ArrayList<>(round.entrySet());
-        list.sort((a, b) -> {
-            int c = Integer.compare(b.getValue()[0], a.getValue()[0]);
-            if (c != 0) return c;
-            c = Integer.compare(b.getValue()[2], a.getValue()[2]);
-            return c != 0 ? c : Integer.compare(a.getValue()[1], b.getValue()[1]);
-        });
+    /** Leistungspunkte einer Runde. */
+    private int score(UUID id, Team winner) {
+        int[] r = round.getOrDefault(id, new int[3]);
+        int sc = r[0] * 10 + roundAssists.getOrDefault(id, 0) * 5 + r[2] * 2
+                + roundIntercepts.getOrDefault(id, 0) * 6 + roundPortalDmg.getOrDefault(id, 0)
+                + roundGlass.getOrDefault(id, 0) / 3 - r[1] * 3;
+        if (winner != null && teams.get(id) == winner) sc += 15;
+        return Math.max(0, sc);
+    }
+
+    private static String grade(int score) {
+        if (score >= 90) return "<gradient:#FF2E63:#FFC145><bold>S</bold></gradient>";
+        if (score >= 60) return "<ok><bold>A</bold>";
+        if (score >= 38) return "<info><bold>B</bold>";
+        if (score >= 20) return "<acc><bold>C</bold>";
+        return "<bad><bold>D</bold>";
+    }
+
+    /** Rundenauswertung mit Leistungsbewertung (S/A/B/C/D) und MVP. */
+    private void sendSummary(Team winner) {
+        List<UUID> ids = new ArrayList<>(round.keySet());
+        for (UUID id : roundAssists.keySet()) if (!ids.contains(id)) ids.add(id);
+        ids.sort((x, y) -> Integer.compare(score(y, winner), score(x, winner)));
         List<Component> lines = new ArrayList<>();
-        lines.add(Msg.mm("<dim><st>                                        "));
-        lines.add(Msg.mm("  <pri><bold>Rundenauswertung</bold> <dim>– " + formatTime(seconds)));
-        if (!list.isEmpty()) {
-            Map.Entry<UUID, int[]> mvp = list.getFirst();
-            int[] v = mvp.getValue();
-            lines.add(Msg.mm("  <acc>★ MVP: <txt>" + Msg.esc(names.getOrDefault(mvp.getKey(), "?"))
-                    + " <mut>(" + v[0] + " Kills, " + v[2] + " Raketen)"));
+        lines.add(Msg.mm("<dim><st>                                             "));
+        lines.add(Msg.mm("  <pri><bold>Rundenauswertung</bold> <dim>– " + formatTime(seconds) + " – " + Msg.esc(map.name())));
+        if (!ids.isEmpty()) {
+            UUID mvp = ids.getFirst();
+            lines.add(Msg.mm("  <acc>★ MVP: <txt>" + Msg.esc(names.getOrDefault(mvp, "?")) + " <dim>(" + score(mvp, winner) + " Punkte)"));
             String[] medals = {"<pri>1.", "<mut>2.", "<#cd7f32>3."};
-            for (int i = 0; i < Math.min(3, list.size()); i++) {
-                int[] s = list.get(i).getValue();
-                lines.add(Msg.mm("  " + medals[i] + " <txt>" + Msg.esc(names.getOrDefault(list.get(i).getKey(), "?"))
-                        + " <dim>» <ok>" + s[0] + " K <bad>" + s[1] + " T <info>" + s[2] + " R"));
+            for (int i = 0; i < Math.min(3, ids.size()); i++) {
+                UUID id = ids.get(i);
+                int[] r = round.getOrDefault(id, new int[3]);
+                lines.add(Msg.mm("  " + medals[i] + " " + grade(score(id, winner)) + " <txt>" + Msg.esc(names.getOrDefault(id, "?"))
+                        + " <dim>» <ok>" + r[0] + "K <acc>" + roundAssists.getOrDefault(id, 0) + "A <bad>" + r[1] + "T <info>"
+                        + r[2] + "R <dim>· <pri>" + roundPortalDmg.getOrDefault(id, 0) + " Portal"));
             }
         }
-        lines.add(Msg.mm("<dim><st>                                        "));
+        lines.add(Msg.mm("<dim><st>                                             "));
         for (Player p : everyone()) {
             for (Component c : lines) p.sendMessage(c);
-            int[] own = round.get(p.getUniqueId());
-            if (own != null) {
-                p.sendMessage(Msg.mm("  <mut>Du: <ok>" + own[0] + " Kills <dim>| <acc>" + roundAssists.getOrDefault(p.getUniqueId(), 0)
-                        + " Assists <dim>| <bad>" + own[1] + " Tode <dim>| <info>" + own[2] + " Raketen"));
-            }
+            UUID id = p.getUniqueId();
+            if (!round.containsKey(id) && !roundAssists.containsKey(id)) continue;
+            int sc = score(id, winner);
+            int[] r = round.getOrDefault(id, new int[3]);
+            p.sendMessage(Msg.mm("  <mut>Deine Bewertung: " + grade(sc) + " <dim>(" + sc + " Punkte)"));
+            p.sendMessage(Msg.mm("  <dim>" + r[0] + " Kills · " + roundAssists.getOrDefault(id, 0) + " Assists · " + r[1] + " Tode · "
+                    + r[2] + " Raketen · " + roundIntercepts.getOrDefault(id, 0) + " abgefangen · "
+                    + roundPortalDmg.getOrDefault(id, 0) + " Portalblöcke · " + roundGlass.getOrDefault(id, 0) + " Glas"));
         }
     }
 
@@ -1681,6 +2005,8 @@ public final class Game {
     private final Map<UUID, Kit> kits = new HashMap<>();
     private final Set<UUID> ready = new HashSet<>();
     private boolean readyTriggered;
+    private boolean forcedStart;
+    private int readyTimer = -1;
     private final Set<UUID> respawning = new HashSet<>();
     private final Map<UUID, Set<String>> boosts = new HashMap<>();
     // 2.3: Shop, Airdrops, Events, Kopfgeld, Assists, Rache, Abfangen, VIP
@@ -1755,43 +2081,46 @@ public final class Game {
 
     private void updateBoard() {
         List<String> lines = new ArrayList<>();
-        lines.add("<dim>" + map.name());
-        lines.add("");
+        lines.add("<dim>━━━━━━━━━━━━━━━━━━");
+        lines.add("<mut>Map <txt><bold>" + Msg.esc(map.name()) + "</bold> <dim>" + map.describe());
         switch (state) {
-            case WAITING -> lines.add("<mut>Warte auf Spieler <dim>(" + teams.size() + "/" + min() + ")");
-            case COUNTDOWN -> lines.add("<mut>Start in <acc>" + Math.max(0, countdown) + "s");
-            case RUNNING -> lines.add("<mut>Zeit: <txt>" + formatTime(seconds));
-            case ENDING -> lines.add("<pri>Runde beendet");
+            case WAITING -> lines.add("<mut>Status <acc>Warte auf Spieler <dim>(" + teams.size() + "/" + min() + ")");
+            case COUNTDOWN -> lines.add("<mut>Status <ok>Start in " + Math.max(0, countdown) + " s");
+            case RUNNING -> lines.add("<mut>Zeit <txt><bold>" + formatTime(seconds) + "</bold>" + (suddenDeath ? " <bad>SUDDEN DEATH" : ""));
+            case ENDING -> lines.add("<mut>Status <pri>Runde beendet");
         }
-        if ((state == State.WAITING || state == State.COUNTDOWN) && !teams.isEmpty()) {
-            lines.add("<mut>Bereit: <ok>" + readyCount() + "<dim>/" + teams.size());
-        }
-        if (votingOpen() && !votes.isEmpty()) {
-            String lead = map.name();
-            int lv = votesFor(lead);
-            for (MapConfig m : votableMaps()) if (votesFor(m.name()) > lv) { lead = m.name(); lv = votesFor(lead); }
-            lines.add("<mut>Vote: <acc>" + lead + " <dim>(" + lv + ")");
+        if (state == State.WAITING || state == State.COUNTDOWN) {
+            lines.add("");
+            lines.add("<mut>Bereit <ok>" + readyCount() + "<dim>/" + teams.size() + (readyTimer >= 0 ? " <dim>· <acc>" + readyTimer + " s" : ""));
+            if (votingOpen() && !votes.isEmpty()) {
+                String lead = map.name();
+                int lv = votesFor(lead);
+                for (MapConfig m : votableMaps()) if (votesFor(m.name()) > lv) { lead = m.name(); lv = votesFor(lead); }
+                lines.add("<mut>Abstimmung <acc>" + lead + " <dim>(" + lv + ")");
+            }
         }
         lines.add(" ");
-        lines.add(Team.GREEN.colored() + "<mut>: <txt>" + teamPlayers(Team.GREEN).size());
-        lines.add(Team.RED.colored() + "<mut>: <txt>" + teamPlayers(Team.RED).size());
-        if (state == State.RUNNING) {
-            lines.add("   ");
-            lines.add("<mut>Portal-Zustand");
+        lines.add("<tgreen>■ <txt>" + teamPlayers(Team.GREEN).size() + " <mut>Spieler <dim>vs <txt>"
+                + teamPlayers(Team.RED).size() + " <mut>Spieler <tred>■");
+        if (state == State.RUNNING || state == State.ENDING) {
+            lines.add("  ");
+            lines.add("<mut>Portale");
             for (Team t : Team.values()) {
                 int hp = portalHp.getOrDefault(t, 100);
                 String col = hp > 60 ? "ok" : hp > 25 ? "acc" : "bad";
-                if (lossPercent() > 0) {
-                    lines.add(t.colored() + " " + Msg.bar(hp / 100.0, 10, col) + " <" + col + ">" + hp + "%");
-                } else {
-                    lines.add(t.colored() + " <ok>intakt <dim>(1 Treffer = aus)");
-                }
+                String sq = "<" + t.tag() + ">■ ";
+                if (lossPercent() > 0) lines.add(sq + Msg.bar(hp / 100.0, 12, col) + " <" + col + ">" + hp + "%");
+                else lines.add(sq + "<ok>intakt");
             }
+            lines.add("   ");
+            lines.add("<mut>Teampunkte <tgreen>" + teamPoints.getOrDefault(Team.GREEN, 0)
+                    + " <dim>· <tred>" + teamPoints.getOrDefault(Team.RED, 0));
+            lines.add("<mut>Nächstes Item <acc>" + itemTimer + " s");
+            if (activeEvent != null) lines.add("<info>⚡ " + eventName(activeEvent) + " <dim>" + eventLeft + " s");
         }
-        if (state == State.RUNNING) {
-            lines.add("  ");
-            lines.add("<mut>Item in <acc>" + itemTimer + "s");
-        }
+        lines.add("<dim>━━━━━━━━━━━━━━━━━━ ");
+        String server = plugin.getConfig().getString("tablist.server-name", "");
+        if (server != null && !server.isBlank()) lines.add("<pri>" + Msg.esc(server));
         for (int i = 0; i < lines.size(); i++) {
             Score s = sidebar.getScore("l" + i);
             s.setScore(lines.size() - i);

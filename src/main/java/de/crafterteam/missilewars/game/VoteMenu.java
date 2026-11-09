@@ -39,7 +39,7 @@ public final class VoteMenu {
     }
 
     private static String describe(MapConfig m) {
-        String base = m.type() == MapConfig.Type.GENERATED ? "Generierte Arena, Abstand " + m.distance() : "Eigene Map";
+        String base = m.describe();
         return base + (m.ratingPercent() < 0 ? "" : "\n👍 " + m.ratingPercent() + "% (" + m.ratings() + " Bewertungen)");
     }
 

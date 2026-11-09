@@ -70,6 +70,13 @@ public final class MwCommand implements BasicCommand {
             case "holo", "hologram" -> holo(sender, args);
             case "vote", "abstimmen" -> vote(sender, args);
             case "shop" -> { if (sender instanceof Player p) plugin.shop().open(p); }
+            case "upgrades", "upgrade" -> {
+                if (sender instanceof Player p) {
+                    Game g = plugin.games().get(p);
+                    if (g != null && g.state() == Game.State.RUNNING && g.team(p) != null) de.crafterteam.missilewars.game.TeamUpgrade.open(g, p);
+                    else Msg.send(p, "<bad>Team-Upgrades gibt es nur während der Runde.");
+                }
+            }
             case "rate", "bewerten" -> {
                 if (sender instanceof Player p && args.length > 1) {
                     String v = args[1].toLowerCase(Locale.ROOT);
@@ -412,10 +419,11 @@ public final class MwCommand implements BasicCommand {
                 int dist = args.length > 3 ? parseInt(args[3], 60) : plugin.getConfig().getInt("generator.distance", 60);
                 dist = Math.max(25, Math.min(200, dist));
                 MapConfig nm = new MapConfig(name, MapConfig.Type.GENERATED);
+                nm.theme(ArenaGenerator.Theme.parse(args.length > 4 ? args[4] : "classic"));
                 ArenaGenerator.applyLayout(nm, dist);
                 nm.ready(true);
                 plugin.maps().add(nm);
-                Msg.send(s, "<ok>Generierte Map '" + name + "' angelegt <mut>(Abstand " + dist + "). /mw join " + name);
+                Msg.send(s, "<ok>Generierte Map '" + name + "' angelegt <mut>(" + nm.theme().displayName() + ", Abstand " + dist + ").");
             }
             case "create" -> {
                 if (!(s instanceof Player p)) return;
@@ -655,7 +663,7 @@ public final class MwCommand implements BasicCommand {
         boolean admin = s.hasPermission(ADMIN);
         if (args.length == 1) {
             out.addAll(List.of("join", "spectate", "leave", "team", "vote", "kit", "bereit", "raketen", "shop", "coins",
-                    "daily", "erfolge", "level", "menu", "teleporter", "list", "stats", "top"));
+                    "daily", "erfolge", "level", "upgrades", "menu", "teleporter", "list", "stats", "top"));
             if (s.hasPermission("missilewars.mod")) out.add("mod");
             if (s.hasPermission("missilewars.start")) out.add("start");
             if (admin) out.addAll(List.of("start", "stop", "setlobby", "setwaitlobby", "reload", "map", "holo", "givecoins"));

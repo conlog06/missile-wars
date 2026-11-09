@@ -77,7 +77,7 @@ public final class Menus {
             }
             int count = g == null ? 0 : g.playerCount();
             int max = plugin.getConfig().getInt("players.max", 16);
-            String type = m.type() == MapConfig.Type.GENERATED ? "Generierte Arena" : "Eigene Map";
+            String type = m.describe();
             ItemStack it = Gui.item(mat, "<pri><bold>" + m.name().toUpperCase(Locale.ROOT),
                     "<mut>" + type, "", status, "<mut>Spieler: <txt>" + count + "<dim>/" + max,
                     "<mut>" + Msg.bar(count / (double) max, 16, "pri"), "",
@@ -229,6 +229,32 @@ public final class Menus {
                 p.closeInventory();
             });
         }
+        gui.open(viewer);
+    }
+
+    // ── Wartelobby-Menü (ersetzt die vielen Hotbar-Items) ────────────
+
+    public static void lobby(MissileWarsPlugin plugin, de.crafterteam.missilewars.game.Game g, Player viewer) {
+        Gui gui = new Gui(4, "<logo> <dim>» <mut>Wartelobby").frame();
+        boolean vote = g.votingOpen() && g.votableMaps().size() > 1;
+        gui.set(10, Gui.item(vote ? Material.FILLED_MAP : Material.MAP, "<acc><bold>Map-Abstimmung",
+                "<mut>Aktuell: <txt>" + g.map().name() + " <dim>(" + g.map().describe() + ")", "",
+                vote ? "<acc>» Abstimmen" : "<dim>Abstimmung geschlossen"),
+                p -> { p.closeInventory(); de.crafterteam.missilewars.game.VoteMenu.open(plugin, g, p); });
+        gui.set(11, Gui.item(Material.CHEST, "<acc><bold>Kit", "<mut>Gewählt: <txt>" + g.kit(viewer).displayName(), "", "<acc>» Wählen"),
+                p -> kits(plugin, g, p));
+        gui.set(12, Gui.item(Material.EMERALD, "<ok><bold>Shop", "<mut>Coins: <acc>" + plugin.stats().coins(viewer), "", "<acc>» Öffnen"),
+                p -> plugin.shop().open(p));
+        gui.set(13, Gui.item(Material.KNOWLEDGE_BOOK, "<pri><bold>Raketen-Übersicht", "", "<acc>» Öffnen"), p -> missiles(plugin, p));
+        gui.set(14, Gui.item(Material.GOLDEN_HELMET, "<acc><bold>Erfolge & Level", "<mut>Level " + plugin.progression().level(viewer), "",
+                "<acc>» Öffnen"), p -> plugin.progression().openAchievements(p));
+        gui.set(15, Gui.head(viewer, "<pri><bold>Statistiken & Bestenliste", "", "<acc>» Öffnen"), p -> main(plugin, p));
+        gui.set(16, Gui.item(Material.CLOCK, "<acc><bold>Tagesbelohnung", plugin.progression().dailyAvailable(viewer)
+                ? "<ok>Bereit zum Abholen!" : "<dim>Heute schon abgeholt", "", "<acc>» Abholen"), p -> {
+            plugin.progression().claimDaily(p);
+            p.closeInventory();
+        });
+        gui.set(31, Gui.item(Material.BARRIER, "<bad>Schließen"), Player::closeInventory);
         gui.open(viewer);
     }
 }

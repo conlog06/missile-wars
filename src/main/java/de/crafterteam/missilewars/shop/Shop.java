@@ -230,6 +230,11 @@ public final class Shop {
                 });
             }
         }
+        gui.set(29, Gui.item(Material.BEACON, "<acc><bold>Team-Upgrades", "<mut>Teampunkte: <acc>" + g.teamPoints(g.team(p)),
+                "", "<acc>» Öffnen"), pl -> {
+            Game gg = plugin.games().get(pl);
+            if (gg != null) de.crafterteam.missilewars.game.TeamUpgrade.open(gg, pl);
+        });
         gui.set(31, Gui.item(Material.BARRIER, "<bad>Schließen"), Player::closeInventory);
         gui.open(p);
     }

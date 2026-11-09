@@ -22,6 +22,26 @@ Alte Clients (1.8 / 1.12) kommen per **ViaVersion + ViaBackwards** auf den Serve
 
 Die Raketen werden vom Plugin bewegt (wie Flugmaschinen, aber ohne echtes Redstone) – das läuft stabil, ohne Lag und unabhängig von Redstone-Änderungen in neuen Versionen.
 
+## Neu in 2.4.0
+
+**5 Arena-Themes** (Map-Abstimmung): **Klassisch**, **Piratenschiffe** (Galeonen mit Masten, Segeln, Kajüte und Meer), **Raumschiffe** (eigene Sci-Fi-Schiffe mit Triebwerken, Cockpit, Asteroiden & Mond, Nachthimmel), **Eisfestung** (Türme, Zinnen, Eisschollen), **Netherfestung** (Basaltsäulen, Netherrack-Inseln). Werden beim ersten Start einmal angelegt (`piraten`, `weltraum`, `eisfestung`, `nether`); eigene: `/mw map generate <name> [abstand] [thema]`.
+
+**Mehr Schutz** – zwei zusätzliche Glasschichten vor jedem Portal.
+
+**Schleichen beim Platzieren** – Rakete wird 5 Blöcke tiefer gesetzt (`missile.sneak-offset`), Vorschau zeigt es.
+
+**Bereit-Pflicht** – bis 2 Spieler startet die Runde nur, wenn alle „Bereit" drücken; wer nach 60 s nicht bereit ist, fliegt aus der Runde (`ready:`).
+
+**Aufgeräumte Lobby-Hotbar** – Bereit · Team · Menü · (VIP-Start) · Verlassen. Das Menü bündelt Map-Abstimmung, Kit, Shop, Raketen, Erfolge, Statistiken und Tagesbelohnung.
+
+**Neues Scoreboard** – größer, mit Map-Thema, symmetrischen Portal-Balken für beide Teams, Teampunkten, Event-Anzeige und Servername.
+
+**Team-Upgrades** – Teampunkte für zerstörtes Glas der Gegner-Basis (+1), Kills (+3), abgefangene Raketen (+5), Airdrops (+5). Im Runden-Shop (Taste F) bzw. `/mw upgrades`: Nachschub, Raketen-Turbo, Verstärkte Schilde, Panzerung, Glas-Reparatur, Portal-Reparatur.
+
+**Leistungsbewertung** – nach jeder Runde S/A/B/C/D für jeden Spieler aus Kills, Assists, Raketen, Abfangen, Portal- und Glasschaden; MVP nach Punkten.
+
+**End-Animation** – alle schauen auf das gefallene Portal: Glas zerspringt, das Portal baut sich wieder auf und wird im Zeitraffer in der echten Reihenfolge zerstört, dann bricht der Rest zusammen.
+
 ## Neu in 2.3.0
 
 **Neue Arena im klassischen Look** – zwei große Glas-Boxen in Teamfarbe mit Obsidian-Kanten, darin eine Obsidianwand mit dem Portal; Spawn auf dem Dach; Tageshimmel; großes „MISSILE WARS"-Schild an Ketten seitlich der Flugbahn. Generierte Maps bekommen das Design automatisch.

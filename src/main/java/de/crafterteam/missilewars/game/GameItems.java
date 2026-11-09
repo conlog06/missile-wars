@@ -40,6 +40,7 @@ public final class GameItems {
     public static final String MENU_READY = "menu_ready";
     public static final String MENU_SHOP = "menu_shop";
     public static final String MENU_VIPSTART = "menu_vipstart";
+    public static final String MENU_LOBBY = "menu_lobby";
 
     public static final List<String> ALL_IDS = List.of(
             "tomahawk", "juggernaut", "shieldbuster", "lightning", "guardian", "gemini", "interceptor",
@@ -187,21 +188,18 @@ public final class GameItems {
     }
 
     public void giveLobbyItems(Player p, Team team, boolean vote, boolean ready) {
+        // Aufgeräumt: Bereit · Team · Menü (alles andere) · VIP-Start · Verlassen
         p.getInventory().clear();
-        if (plugin.getConfig().getBoolean("kits", true)) p.getInventory().setItem(1, create(MENU_KIT));
-        p.getInventory().setItem(3, create(MENU_MISSILES));
         ItemStack readyItem = create(MENU_READY);
         if (ready) readyItem = tagged(new ItemStack(Material.GRAY_DYE), MENU_READY, "<mut><bold>Nicht mehr bereit",
                 "<ok>Du bist bereit.", "<dim>Rechtsklick zum Zurücknehmen");
-        p.getInventory().setItem(6, readyItem);
-        if (plugin.getConfig().getBoolean("coins.enabled", true)) p.getInventory().setItem(5, create(MENU_SHOP));
-        if (p.hasPermission("missilewars.start")) p.getInventory().setItem(7, create(MENU_VIPSTART));
+        p.getInventory().setItem(0, readyItem);
         Material wool = team == Team.GREEN ? Material.LIME_WOOL : Material.RED_WOOL;
-        p.getInventory().setItem(0, tagged(new ItemStack(wool), MENU_TEAM, "<acc><bold>Team wählen",
-                "<mut>Rechtsklick"));
+        p.getInventory().setItem(2, tagged(new ItemStack(wool), MENU_TEAM, "<acc><bold>Team wählen", "<dim>Rechtsklick"));
+        p.getInventory().setItem(4, tagged(new ItemStack(Material.NETHER_STAR), MENU_LOBBY, "<pri><bold>Menü",
+                "<mut>Map-Abstimmung, Kit, Shop, Raketen,", "<mut>Erfolge, Statistiken, Tagesbelohnung", "<dim>Rechtsklick"));
+        if (p.hasPermission("missilewars.start")) p.getInventory().setItem(6, create(MENU_VIPSTART));
         p.getInventory().setItem(8, create(MENU_LEAVE));
-        if (vote) p.getInventory().setItem(4, create(MENU_VOTE));
-        p.getInventory().setItem(2, create(MENU_GAME));
     }
 
     /** Zuschauer (Spectator-Modus kann keine Items benutzen – Teleporter per /mw teleporter). */

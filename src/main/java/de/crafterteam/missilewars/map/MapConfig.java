@@ -49,6 +49,7 @@ public final class MapConfig {
     private boolean ready;
     private int deathY;
     private int ratingUp, ratingDown;
+    private ArenaGenerator.Theme theme = ArenaGenerator.Theme.CLASSIC;
     private final Map<Team, Spawn> spawns = new EnumMap<>(Team.class);
     private final Map<Team, Box> portals = new EnumMap<>(Team.class);
 
@@ -69,6 +70,14 @@ public final class MapConfig {
     public boolean ready() { return ready; }
     public void ready(boolean r) { this.ready = r; }
     public int deathY() { return deathY; }
+    public ArenaGenerator.Theme theme() { return theme; }
+    public void theme(ArenaGenerator.Theme t) { this.theme = t; }
+
+    /** Kurzbeschreibung für Menüs. */
+    public String describe() {
+        return type == Type.GENERATED ? theme.displayName() : "Eigene Map";
+    }
+
     public void rate(boolean up) { if (up) ratingUp++; else ratingDown++; }
     public int ratings() { return ratingUp + ratingDown; }
     /** Anteil positiver Bewertungen 0..100, -1 wenn keine. */
@@ -136,6 +145,7 @@ public final class MapConfig {
         y.set("ready", ready);
         y.set("death-y", deathY);
         y.set("rating.up", ratingUp);
+        y.set("theme", theme.name());
         y.set("rating.down", ratingDown);
         for (Team t : Team.values()) {
             String p = t.name().toLowerCase();
@@ -169,6 +179,7 @@ public final class MapConfig {
         m.deathY = y.getInt("death-y", 30);
         m.ratingUp = y.getInt("rating.up", 0);
         m.ratingDown = y.getInt("rating.down", 0);
+        m.theme = ArenaGenerator.Theme.parse(y.getString("theme", "CLASSIC"));
         if (type == Type.GENERATED) {
             ArenaGenerator.applyLayout(m, m.distance);
             m.ready = true;

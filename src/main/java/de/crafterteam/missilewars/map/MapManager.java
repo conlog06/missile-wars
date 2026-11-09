@@ -50,6 +50,21 @@ public final class MapManager {
             add(std);
             plugin.getLogger().info("Standard-Arena 'standard' angelegt.");
         }
+        // Themen-Maps einmalig anlegen (danach darf man sie löschen, sie kommen nicht wieder)
+        if (!plugin.getConfig().getBoolean("generator.themes-created", false)) {
+            String[][] themed = {{"piraten", "PIRATES"}, {"weltraum", "SPACE"}, {"eisfestung", "ICE"}, {"nether", "NETHER"}};
+            for (String[] t : themed) {
+                if (maps.containsKey(t[0])) continue;
+                MapConfig m = new MapConfig(t[0], MapConfig.Type.GENERATED);
+                m.theme(ArenaGenerator.Theme.parse(t[1]));
+                ArenaGenerator.applyLayout(m, plugin.getConfig().getInt("generator.distance", 60));
+                m.ready(true);
+                add(m);
+            }
+            plugin.getConfig().set("generator.themes-created", true);
+            plugin.saveConfig();
+            plugin.getLogger().info("Themen-Maps angelegt: piraten, weltraum, eisfestung, nether.");
+        }
     }
 
     public Collection<MapConfig> all() {

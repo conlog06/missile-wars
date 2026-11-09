@@ -124,6 +124,10 @@ public final class GameListener implements Listener {
             else de.crafterteam.missilewars.gui.Menus.team(plugin, g, p);
             return;
         }
+        if (GameItems.MENU_LOBBY.equals(id)) {
+            de.crafterteam.missilewars.gui.Menus.lobby(plugin, g, p);
+            return;
+        }
         if (GameItems.MENU_VIPSTART.equals(id)) {
             g.vipStart(p);
             return;
@@ -403,6 +407,7 @@ public final class GameListener implements Listener {
         if (e.getEntity() instanceof TNTPrimed tnt && tnt.getSource() instanceof Player p) src = p;
         else if (e.getEntity() instanceof Projectile proj && proj.getShooter() instanceof Player p) src = p;
         g.creditIntercept(src, e.blockList());
+        g.onExplosion(src, e.blockList());
         breakPortalBlocksQuietly(e.blockList());
     }
 
@@ -452,8 +457,10 @@ public final class GameListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onBlockExplode(BlockExplodeEvent e) {
-        if (gameOf(e.getBlock().getWorld()) == null) return;
+        Game g = gameOf(e.getBlock().getWorld());
+        if (g == null) return;
         e.setYield(0f);
+        g.onExplosion(null, e.blockList());
         breakPortalBlocksQuietly(e.blockList());
     }
 
