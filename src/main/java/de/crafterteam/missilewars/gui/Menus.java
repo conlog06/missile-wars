@@ -254,7 +254,33 @@ public final class Menus {
             plugin.progression().claimDaily(p);
             p.closeInventory();
         });
+        if (!g.layerOptions().isEmpty()) {
+            gui.set(22, Gui.item(Material.LIME_STAINED_GLASS, "<info><bold>Glasdicke abstimmen",
+                    "<mut>Wie viele Blöcke Glas vor den Portalen?", "<mut>Mehr Glas = längere Runden.", "",
+                    "<mut>Aktuell: <txt>" + g.layers() + " Blöcke", "", "<acc>» Abstimmen"), p -> glassVote(plugin, g, p));
+        }
         gui.set(31, Gui.item(Material.BARRIER, "<bad>Schließen"), Player::closeInventory);
+        gui.open(viewer);
+    }
+
+    public static void glassVote(MissileWarsPlugin plugin, de.crafterteam.missilewars.game.Game g, Player viewer) {
+        Gui gui = new Gui(3, "<dim>» <info>Glasdicke abstimmen").frame();
+        List<Integer> opts = g.layerOptions();
+        int[] slots = opts.size() <= 3 ? new int[]{11, 13, 15} : new int[]{10, 11, 12, 13, 14, 15, 16};
+        Material[] icons = {Material.GLASS_PANE, Material.GLASS, Material.TINTED_GLASS, Material.OBSIDIAN};
+        for (int i = 0; i < opts.size() && i < slots.length; i++) {
+            int n = opts.get(i);
+            int votes = g.layerVotes(n);
+            String len = n <= 15 ? "Schnelle Runden" : n <= 24 ? "Mittlere Runden" : "Lange Belagerungen";
+            ItemStack it = Gui.item(new ItemStack(icons[Math.min(i, icons.length - 1)], Math.max(1, Math.min(64, n))),
+                    "<info><bold>" + n + " Blöcke Glas", "<mut>" + len, "", "<mut>Stimmen: <acc>" + votes,
+                    g.layers() == n ? "<ok>✔ aktuell" : "", "", "<acc>» Abstimmen");
+            gui.set(slots[i], g.layers() == n ? Gui.glow(it) : it, p -> {
+                g.voteLayers(p, n);
+                glassVote(plugin, g, p);
+            });
+        }
+        gui.set(22, Gui.item(Material.ARROW, "<mut>« Zurück"), p -> lobby(plugin, g, p));
         gui.open(viewer);
     }
 }

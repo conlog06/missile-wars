@@ -43,6 +43,8 @@ public final class Missile {
         int fuseTicks();
         int maxSteps();
         int pierceGlassMax();
+        /** Darf dieser Block durchbrochen werden? (nur Spieler-Schilde/-Plattformen, nie die Arena) */
+        boolean pierceable(Block b);
         /** Koordinate (entlang der Flugachse) hinter dem gegnerischen Portal – ab hier wird die Rakete entfernt. */
         double removeBeyond();
     }
@@ -201,10 +203,12 @@ public final class Missile {
             if (!nb.getType().isAir()) obstacles.add(nb);
         }
         if (!obstacles.isEmpty()) {
-            if (type.piercesGlass() && allGlass(obstacles) && pierced + obstacles.size() <= settings.pierceGlassMax()) {
+            boolean allPierceable = true;
+            for (Block o : obstacles) if (!settings.pierceable(o)) { allPierceable = false; break; }
+            if (allPierceable && type.piercesGlass() && allGlass(obstacles) && pierced + obstacles.size() <= settings.pierceGlassMax()) {
                 pierced += obstacles.size();
                 for (Block o : obstacles) o.setType(Material.AIR, false);
-            } else if (type.drills() && drillable(obstacles) && pierced + obstacles.size() <= settings.pierceGlassMax()) {
+            } else if (allPierceable && type.drills() && drillable(obstacles) && pierced + obstacles.size() <= settings.pierceGlassMax()) {
                 pierced += obstacles.size();
                 for (Block o : obstacles) {
                     world.spawnParticle(Particle.BLOCK, o.getLocation().add(0.5, 0.5, 0.5), 12, 0.3, 0.3, 0.3, o.getBlockData());
@@ -242,7 +246,10 @@ public final class Missile {
         pushEntities(next);
         effects(next);
 
-        if (++steps >= settings.maxSteps()) return Result.STOPPED;
+        if (++steps >= settings.maxSteps()) {
+            detonate(currentAfterMove());   // nie einfach stehen bleiben – am Ende wird gezündet
+            return Result.EXPLODED;
+        }
         return Result.FLYING;
     }
 
@@ -275,6 +282,16 @@ public final class Missile {
         if (steps % 3 == 0) world.playSound(tail, Sound.BLOCK_PISTON_EXTEND, 0.35f, 1.6f);
     }
 
+    /** Aktuelle Blöcke der Rakete (nach dem letzten Schritt) einlesen. */
+    private Map<Pos, BlockData> currentAfterMove() {
+        Map<Pos, BlockData> cur = new LinkedHashMap<>();
+        for (Pos p : parts.keySet()) {
+            Block b = world.getBlockAt(p.x(), p.y(), p.z());
+            if (!b.getType().isAir()) cur.put(p, b.getBlockData());
+        }
+        return cur;
+    }
+
     private void detonate(Map<Pos, BlockData> current) {
         ThreadLocalRandom r = ThreadLocalRandom.current();
         // Einschlag-Effekt an der Front
@@ -291,6 +308,8 @@ public final class Missile {
             Location loc = new Location(world, p.x() + 0.5, p.y(), p.z() + 0.5);
             int fuse = instant ? type.fuseOverride() : settings.fuseTicks() + r.nextInt(0, 11);
             world.spawn(loc, TNTPrimed.class, t -> {
+                t.setGravity(false);                  // sonst fällt das TNT in den 3 s Zündzeit ins Void
+                t.setVelocity(new org.bukkit.util.Vector());
                 t.setFuseTicks(fuse);
                 if (owner != null && owner.isOnline()) t.setSource(owner);
             });
@@ -303,6 +322,8 @@ public final class Missile {
                 Location l = impact.clone().add(Math.cos(a) * rad, r.nextDouble(-1, 2), Math.sin(a) * rad);
                 int fuse = settings.fuseTicks() + 15 + r.nextInt(0, 20);
                 world.spawn(l, TNTPrimed.class, t -> {
+                    t.setGravity(false);
+                    t.setVelocity(new org.bukkit.util.Vector());
                     t.setFuseTicks(fuse);
                     if (owner != null && owner.isOnline()) t.setSource(owner);
                 });

@@ -22,6 +22,15 @@ Alte Clients (1.8 / 1.12) kommen per **ViaVersion + ViaBackwards** auf den Serve
 
 Die Raketen werden vom Plugin bewegt (wie Flugmaschinen, aber ohne echtes Redstone) – das läuft stabil, ohne Lag und unabhängig von Redstone-Änderungen in neuen Versionen.
 
+## Neu in 2.5.0
+- **Raketen explodieren zuverlässig** – TNT fällt nicht mehr in den Void, Raketen am Reichweiten-Ende detonieren.
+- **Keine Raketen mehr durch Wände** – Schildbrecher/Bohrer durchdringen nur noch von Spielern gesetzte Blöcke, nicht die Map.
+- **Start nur per Bereit** – der 60-s-Timer ist nur noch ein AFK-Check.
+- **Glasdicke abstimmen** – 15/24/32 Schichten in der Wartelobby (`glass-vote` in der config).
+- **4 neue Themen-Maps** – Dschungeltempel, Wüstentempel, Atlantis, Ritterburg.
+- **Schönere GUIs** – neuer Rahmen mit Farbverlauf, Trennlinien in den Beschreibungen.
+- **Fairere, höhere Preise** – Team-Upgrades und Runden-Shop teurer; Glas-/Portal-Reparatur repariert nur einen Teil, ist begrenzt und wird jedes Mal teurer.
+
 ## 2.4.1
 - Fix: „Bereit" musste man zweimal drücken (doppelte Klick-Events vom Client)
 - 15 Blöcke Schutzglas vor dem Portal für längere Runden

@@ -223,6 +223,10 @@ public final class Game {
         if (t != null && n > 0) teamPoints.merge(t, n, Integer::sum);
     }
 
+    public org.bukkit.configuration.file.FileConfiguration config() {
+        return plugin.getConfig();
+    }
+
     public int upgradeLevel(Team t, TeamUpgrade u) {
         return upgrades.computeIfAbsent(t, k -> new EnumMap<>(TeamUpgrade.class)).getOrDefault(u, 0);
     }
@@ -231,8 +235,11 @@ public final class Game {
         Team t = team(p);
         if (t == null || state != State.RUNNING) return false;
         int lvl = upgradeLevel(t, u);
-        int cost = u.nextCost(lvl);
-        if (cost < 0) return false;
+        int cost = u.nextCost(plugin.getConfig(), lvl);
+        if (cost < 0) {
+            Msg.send(p, u.repeatable() ? "<bad>Keine " + u.displayName() + " mehr übrig in dieser Runde." : "<ok>Schon voll ausgebaut.");
+            return false;
+        }
         if (teamPoints(t) < cost) {
             Msg.send(p, "<bad>Zu wenig Teampunkte (" + teamPoints(t) + "/" + cost + ").");
             return false;
@@ -242,18 +249,19 @@ public final class Game {
         switch (u) {
             case ARMOR -> { for (Player m : teamPlayers(t)) applyArmor(m, t); }
             case GLASS_REPAIR -> {
-                int n = 0;
-                for (Map.Entry<Block, BlockData> e : baseGlass.get(t).entrySet()) {
-                    if (e.getKey().getType().isAir()) {
-                        e.getKey().setBlockData(e.getValue(), false);
-                        n++;
-                    }
-                }
-                Msg.send(p, "<ok>" + n + " Glasblöcke repariert.");
+                // nur ein Teil, und das Glas direkt am Portal zuerst
+                MapConfig.Box pb = map.portal(t);
+                double along = map.along(pb);
+                List<Map.Entry<Block, BlockData>> missing = new ArrayList<>();
+                for (Map.Entry<Block, BlockData> e : baseGlass.get(t).entrySet()) if (e.getKey().getType().isAir()) missing.add(e);
+                missing.sort(java.util.Comparator.comparingDouble(e -> Math.abs((map.axisX() ? e.getKey().getX() : e.getKey().getZ()) - along)));
+                int n = (int) Math.ceil(missing.size() * u.repairPercent(plugin.getConfig()) / 100.0);
+                for (int i = 0; i < n; i++) missing.get(i).getKey().setBlockData(missing.get(i).getValue(), false);
+                Msg.send(p, "<ok>" + n + " von " + missing.size() + " fehlenden Glasblöcken repariert.");
             }
             case PORTAL_REPAIR -> {
                 List<Block> order = destroyOrder.get(t);
-                int max = Math.max(1, portalBlocks.get(t).size() / 10);
+                int max = Math.max(1, portalBlocks.get(t).size() * u.repairPercent(plugin.getConfig()) / 100);
                 int n = 0;
                 for (int i = order.size() - 1; i >= 0 && n < max; i--) {
                     Block b = order.get(i);
@@ -397,7 +405,7 @@ public final class Game {
         setBoardTeam(p, t);
         PlayerSnapshot.reset(p);
         p.setScoreboard(board);
-        p.teleport(running ? map.spawn(t).toLocation(world) : waitSpot(t));
+        p.teleport(running ? spawnLoc(t) : waitSpot(t));
 
         names.put(p.getUniqueId(), p.getName());
         if (running) {
@@ -476,6 +484,8 @@ public final class Game {
         spectators.remove(id);
         ready.remove(id);
         respawning.remove(id);
+        afkDeadline.remove(id);
+        layerVotes.remove(id);
         plugin.games().unbind(p);
         plugin.preview().hide(p);
         p.hideBossBar(bossBar);
@@ -558,13 +568,74 @@ public final class Game {
         updateBoard();
     }
 
+    /** Team-Spawn; bei generierten Maps passend zur gewählten Glasdicke. */
+    public Location spawnLoc(Team t) {
+        Location l = map.spawn(t).toLocation(world);
+        if (map.type() == MapConfig.Type.GENERATED && layers != ArenaGenerator.DEFAULT_LAYERS) {
+            int zp = map.portal(t).minZ();
+            int sgn = zp < 0 ? -1 : 1;
+            l.setZ(zp - sgn * ArenaGenerator.spawnOffset(layers) + 0.5);
+        }
+        return l;
+    }
+
+    // ── Glasdicke-Abstimmung ─────────────────────────────────────────
+
+    public List<Integer> layerOptions() {
+        List<Integer> out = new ArrayList<>();
+        if (map.type() != MapConfig.Type.GENERATED || !plugin.getConfig().getBoolean("glass-vote.enabled", true)) return out;
+        for (int n : plugin.getConfig().getIntegerList("glass-vote.options")) {
+            if (n >= 1 && n <= ArenaGenerator.MAX_LAYERS && ArenaGenerator.front(n) < map.distance() - 8) out.add(n);
+        }
+        return out;
+    }
+
+    public int layers() {
+        return layers;
+    }
+
+    public int layerVotes(int n) {
+        int c = 0;
+        for (int v : layerVotes.values()) if (v == n) c++;
+        return c;
+    }
+
+    public void voteLayers(Player p, int n) {
+        if (state != State.WAITING && state != State.COUNTDOWN) {
+            Msg.send(p, "<bad>Die Abstimmung ist vorbei.");
+            return;
+        }
+        if (!layerOptions().contains(n)) return;
+        layerVotes.put(p.getUniqueId(), n);
+        broadcast(Msg.esc(p.getName()) + " stimmt für <acc>" + n + " Blöcke Glas <dim>(" + layerVotes(n) + " Stimmen)");
+        p.playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+    }
+
+    /** Beim Start: Glasdicke auswerten, Basen bei Bedarf neu bauen. */
+    private void applyLayerVote() {
+        if (layerVotes.isEmpty() || layerOptions().isEmpty()) return;
+        int best = layers, bestVotes = layerVotes(layers);
+        for (int n : layerOptions()) {
+            int v = layerVotes(n);
+            if (v > bestVotes) { best = n; bestVotes = v; }
+        }
+        if (best == layers) return;
+        layers = best;
+        ArenaGenerator.rebuildBases(world, map.distance(), map.theme(), layers);
+        portalBlocks.clear();
+        portalOwner.clear();
+        portalData.clear();
+        scanPortals();
+        broadcast("<acc>Abstimmung: <txt>" + layers + " Blöcke Schutzglas <mut>vor jedem Portal.");
+    }
+
     /** Wo Spieler vor dem Start warten: Wartelobby oder Team-Spawn. */
     public Location waitSpot(Team t) {
         if (plugin.waitingLobby().enabled()) {
             Location l = plugin.waitingLobby().spawn();
             if (l != null) return l;
         }
-        return map.spawn(t == null ? Team.GREEN : t).toLocation(world);
+        return spawnLoc(t == null ? Team.GREEN : t);
     }
 
     /** Darf ein Spieler dieser Runde in dieser Welt sein? */
@@ -661,9 +732,9 @@ public final class Game {
     private void checkStart() {
         if (state == State.WAITING && teams.size() >= min() && readyRequired()) {
             if (readyTimer < 0) {
-                readyTimer = plugin.getConfig().getInt("ready.timeout", 60);
-                broadcast("<acc>Drückt auf <ok><bold>Bereit</bold> <acc>(grüner Farbstoff), um zu starten! <mut>Wer in "
-                        + readyTimer + " s nicht bereit ist, fliegt aus der Runde.");
+                readyTimer = 0;   // AFK-Check aktiv
+                broadcast("<acc>Die Runde startet, sobald alle <ok><bold>Bereit</bold> <acc>gedrückt haben. "
+                        + "<mut>AFK-Check: Wer " + plugin.getConfig().getInt("ready.timeout", 60) + " s nicht bereit ist, fliegt raus.");
             }
             return;
         }
@@ -814,6 +885,7 @@ public final class Game {
     }
 
     private void start() {
+        applyLayerVote();
         if (plugin.getConfig().getBoolean("auto-balance", true)) autoBalance();
         state = State.RUNNING;
         seconds = 0;
@@ -828,7 +900,7 @@ public final class Game {
             plugin.stats().add(p, Stat.GAMES, 1);
             PlayerSnapshot.reset(p);
             p.setGameMode(GameMode.SURVIVAL);
-            p.teleport(map.spawn(t).toLocation(world));
+            p.teleport(spawnLoc(t));
             plugin.items().giveKit(p, t);
             applyArmor(p, t);
             applyCombat(p);
@@ -1189,7 +1261,7 @@ public final class Game {
         // kurze Zuschauerphase mit Countdown
         respawning.add(p.getUniqueId());
         p.setGameMode(GameMode.SPECTATOR);
-        p.teleport(map.spawn(t).toLocation(world).add(0, 6, 0));
+        p.teleport(spawnLoc(t).add(0, 6, 0));
         for (int i = 0; i < delay; i++) {
             final int left = delay - i;
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
@@ -1211,7 +1283,7 @@ public final class Game {
         p.setFallDistance(0f);
         p.setFireTicks(0);
         p.setHealth(PlayerSnapshot.maxHealth(p));
-        p.teleport(map.spawn(t).toLocation(world));
+        p.teleport(spawnLoc(t));
         p.setNoDamageTicks(40);
         kit(p).apply(p);
         p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_HURT, 1f, 0.8f);
@@ -1279,34 +1351,38 @@ public final class Game {
         broadcast("<ok>Alle sind bereit – es geht gleich los!");
     }
 
+    /** AFK-Check vor dem Start: der Timer startet die Runde nicht, er entfernt nur, wer nicht bereit ist. */
     private void tickReadyTimer() {
         if (readyTimer < 0) return;
         if (teams.size() < min() || !readyRequired()) {
             readyTimer = -1;
+            afkDeadline.clear();
             return;
         }
-        if (readyTimer == 30 || readyTimer == 10 || (readyTimer <= 5 && readyTimer > 0)) {
-            for (Player p : players()) {
-                if (ready.contains(p.getUniqueId())) continue;
-                p.showTitle(Title.title(Msg.mm("<acc>Bereit?"), Msg.mm("<mut>Noch <bad>" + readyTimer + " s <mut>– sonst fliegst du raus"),
+        long now = System.currentTimeMillis();
+        long timeout = plugin.getConfig().getInt("ready.timeout", 60) * 1000L;
+        String action = plugin.getConfig().getString("ready.timeout-action", "leave");
+        for (Player p : new ArrayList<>(players())) {
+            UUID id = p.getUniqueId();
+            if (ready.contains(id)) {
+                afkDeadline.remove(id);
+                p.sendActionBar(Msg.mm("<ok>✔ Bereit <dim>| <mut>warte auf <txt>" + (teams.size() - readyCount()) + " <mut>Spieler"));
+                continue;
+            }
+            long deadline = afkDeadline.computeIfAbsent(id, k -> now + timeout);
+            int left = (int) Math.ceil((deadline - now) / 1000.0);
+            p.sendActionBar(Msg.mm("<acc>Drück <ok><bold>Bereit</bold> <dim>(grüner Farbstoff) <dim>| <mut>AFK-Check in <bad>" + Math.max(0, left) + " s"));
+            if (left == 30 || left == 10 || (left <= 5 && left > 0)) {
+                p.showTitle(Title.title(Msg.mm("<acc>Bereit?"), Msg.mm("<mut>Noch <bad>" + left + " s <mut>– sonst gilt du als AFK"),
                         Title.Times.times(Duration.ZERO, Duration.ofMillis(1100), Duration.ofMillis(200))));
                 p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 0.8f, 0.7f);
             }
-        }
-        Component bar = Msg.mm("<mut>Bereit: <ok>" + readyCount() + "<dim>/" + teams.size() + " <dim>| <mut>noch <acc>" + readyTimer + " s");
-        for (Player p : players()) p.sendActionBar(bar);
-        if (--readyTimer > 0) return;
-        readyTimer = -1;
-        String action = plugin.getConfig().getString("ready.timeout-action", "leave");
-        for (Player p : new ArrayList<>(players())) {
-            if (ready.contains(p.getUniqueId())) continue;
-            Msg.send(p, "<bad>Du warst nicht bereit und wurdest aus der Runde entfernt. <mut>Mit /mw join kommst du zurück.");
+            if (left > 0) continue;
+            afkDeadline.remove(id);
+            Msg.send(p, "<bad>Du warst AFK (nicht bereit) und wurdest aus der Runde entfernt. <mut>Mit /mw join kommst du zurück.");
             leave(p, true);
-            if ("kick".equalsIgnoreCase(action)) {
-                p.kick(Msg.mm("<logo>\n<bad>Du warst nicht rechtzeitig bereit."));
-            } else if ("lobby-server".equalsIgnoreCase(action)) {
-                plugin.serverMode().toLobbyServer(p);
-            }
+            if ("kick".equalsIgnoreCase(action)) p.kick(Msg.mm("<logo>\n<bad>AFK – du warst nicht bereit."));
+            else if ("lobby-server".equalsIgnoreCase(action)) plugin.serverMode().toLobbyServer(p);
             if (shutDown) return;
         }
     }
@@ -1492,6 +1568,7 @@ public final class Game {
             public int maxSteps() { return plugin.getConfig().getInt("missile.max-steps", 260); }
             public int pierceGlassMax() { return plugin.getConfig().getInt("missile.pierce-glass-max", 12); }
             public double removeBeyond() { return removeBeyond; }
+            public boolean pierceable(Block b) { return isPlaced(b); }
         };
         missiles.add(new Missile(world, type, map.axisX(), dir, speed, p, parts, settings, plugin.shop().trail(p)));
         plugin.shop().reward(p, "missile", "Rakete");
@@ -1590,7 +1667,7 @@ public final class Game {
             plugin.items().giveKit(p, t);
             applyArmor(p, t);
             giveCompass(p, t);
-            p.teleport(map.spawn(t).toLocation(world));
+            p.teleport(spawnLoc(t));
         } else {
             giveLobbyItems(p, t);
         }
@@ -1656,7 +1733,7 @@ public final class Game {
 
     private void spawnAirdrop(Team t) {
         java.util.concurrent.ThreadLocalRandom r = java.util.concurrent.ThreadLocalRandom.current();
-        Location spawn = map.spawn(t).toLocation(world);
+        Location spawn = spawnLoc(t);
         int lat = r.nextInt(-6, 7);
         Block col = map.axisX() ? spawn.getBlock().getRelative(0, 0, lat) : spawn.getBlock().getRelative(lat, 0, 0);
         Block target = null;
@@ -1825,7 +1902,7 @@ public final class Game {
         }
         boolean anim = plugin.getConfig().getBoolean("end-animation", true) && portalBlocks.containsKey(winner.other());
         if (anim) playDestructionAnimation(winner);
-        Location fw = map.spawn(winner).toLocation(world).add(0, 2, 0);
+        Location fw = spawnLoc(winner).add(0, 2, 0);
         for (int i = 0; i < (anim ? 0 : 4); i++) {
             final int delay = i * 15;
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
@@ -2007,6 +2084,9 @@ public final class Game {
     private boolean readyTriggered;
     private boolean forcedStart;
     private int readyTimer = -1;
+    private int layers = ArenaGenerator.DEFAULT_LAYERS;
+    private final Map<UUID, Integer> layerVotes = new HashMap<>();
+    private final Map<UUID, Long> afkDeadline = new HashMap<>();
     private final Set<UUID> respawning = new HashSet<>();
     private final Map<UUID, Set<String>> boosts = new HashMap<>();
     // 2.3: Shop, Airdrops, Events, Kopfgeld, Assists, Rache, Abfangen, VIP
@@ -2091,7 +2171,7 @@ public final class Game {
         }
         if (state == State.WAITING || state == State.COUNTDOWN) {
             lines.add("");
-            lines.add("<mut>Bereit <ok>" + readyCount() + "<dim>/" + teams.size() + (readyTimer >= 0 ? " <dim>· <acc>" + readyTimer + " s" : ""));
+            lines.add("<mut>Bereit <ok>" + readyCount() + "<dim>/" + teams.size() + "");
             if (votingOpen() && !votes.isEmpty()) {
                 String lead = map.name();
                 int lv = votesFor(lead);

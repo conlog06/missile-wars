@@ -65,6 +65,20 @@ public final class MapManager {
             plugin.saveConfig();
             plugin.getLogger().info("Themen-Maps angelegt: piraten, weltraum, eisfestung, nether.");
         }
+        if (plugin.getConfig().getInt("generator.themes-version", 1) < 2) {
+            String[][] themed = {{"dschungel", "JUNGLE"}, {"wueste", "DESERT"}, {"atlantis", "ATLANTIS"}, {"burg", "CASTLE"}};
+            for (String[] t : themed) {
+                if (maps.containsKey(t[0])) continue;
+                MapConfig m = new MapConfig(t[0], MapConfig.Type.GENERATED);
+                m.theme(ArenaGenerator.Theme.parse(t[1]));
+                ArenaGenerator.applyLayout(m, plugin.getConfig().getInt("generator.distance", 60));
+                m.ready(true);
+                add(m);
+            }
+            plugin.getConfig().set("generator.themes-version", 2);
+            plugin.saveConfig();
+            plugin.getLogger().info("Neue Themen-Maps angelegt: dschungel, wueste, atlantis, burg.");
+        }
     }
 
     public Collection<MapConfig> all() {

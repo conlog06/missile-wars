@@ -14,18 +14,18 @@ import java.util.List;
  */
 public enum TeamUpgrade {
 
-    SUPPLY("Nachschub", Material.CHEST, new int[]{40, 80, 120},
+    SUPPLY("Nachschub", Material.CHEST, new int[]{120, 260, 420},
             "Chance auf ein Extra-Item bei jeder Verteilung", "+20 % pro Stufe"),
-    TURBO("Raketen-Turbo", Material.FEATHER, new int[]{60, 120},
+    TURBO("Raketen-Turbo", Material.FEATHER, new int[]{200, 450},
             "Eure Raketen fliegen schneller", "+1 Tempostufe pro Stufe"),
-    SHIELDS("Verstärkte Schilde", Material.SNOWBALL, new int[]{30, 60},
+    SHIELDS("Verstärkte Schilde", Material.SNOWBALL, new int[]{100, 220},
             "Größere Glasschilde", "+1 Radius pro Stufe"),
-    ARMOR("Panzerung", Material.IRON_CHESTPLATE, new int[]{50, 100},
+    ARMOR("Panzerung", Material.IRON_CHESTPLATE, new int[]{150, 350},
             "Schutz-Verzauberung auf der Rüstung", "Schutz I / II"),
-    GLASS_REPAIR("Glas-Reparatur", Material.GLASS, new int[]{50},
-            "Baut das Glas eurer Basis wieder auf", "Beliebig oft kaufbar"),
-    PORTAL_REPAIR("Portal-Reparatur", Material.CRYING_OBSIDIAN, new int[]{120},
-            "Repariert bis zu 10 % eures Portals", "Beliebig oft kaufbar");
+    GLASS_REPAIR("Glas-Reparatur", Material.GLASS, new int[]{150},
+            "Repariert einen Teil des fehlenden Glases", "Nächstes Glas am Portal zuerst · begrenzt"),
+    PORTAL_REPAIR("Portal-Reparatur", Material.CRYING_OBSIDIAN, new int[]{300},
+            "Repariert einen Teil eures Portals", "Begrenzt · wird jedes Mal teurer");
 
     private final String displayName;
     private final Material icon;
@@ -47,14 +47,33 @@ public enum TeamUpgrade {
         return this == GLASS_REPAIR || this == PORTAL_REPAIR;
     }
 
-    public int maxLevel() {
-        return repeatable() ? Integer.MAX_VALUE : costs.length;
+    public String key() {
+        return name().toLowerCase(java.util.Locale.ROOT).replace('_', '-');
     }
 
-    /** Preis der nächsten Stufe, -1 wenn ausgebaut. */
-    public int nextCost(int level) {
-        if (repeatable()) return costs[0];
-        return level >= costs.length ? -1 : costs[level];
+    /** Preise aus der Config (upgrades.<key>.costs), sonst Standard. */
+    private int[] costs(org.bukkit.configuration.file.FileConfiguration cfg) {
+        List<Integer> l = cfg.getIntegerList("upgrades." + key() + ".costs");
+        if (l.isEmpty()) return costs;
+        int[] out = new int[l.size()];
+        for (int i = 0; i < out.length; i++) out[i] = l.get(i);
+        return out;
+    }
+
+    public int maxLevel(org.bukkit.configuration.file.FileConfiguration cfg) {
+        return repeatable() ? cfg.getInt("upgrades." + key() + ".max-uses", this == GLASS_REPAIR ? 3 : 2) : costs(cfg).length;
+    }
+
+    /** Preis der nächsten Stufe, -1 wenn ausgebaut. Reparaturen werden mit jeder Nutzung teurer. */
+    public int nextCost(org.bukkit.configuration.file.FileConfiguration cfg, int level) {
+        if (level >= maxLevel(cfg)) return -1;
+        int[] c = costs(cfg);
+        return repeatable() ? c[0] * (level + 1) : c[level];
+    }
+
+    /** Anteil (Prozent), den eine Reparatur wiederherstellt. */
+    public int repairPercent(org.bukkit.configuration.file.FileConfiguration cfg) {
+        return cfg.getInt("upgrades." + key() + ".percent", this == GLASS_REPAIR ? 35 : 10);
     }
 
     public static void open(Game g, Player viewer) {
@@ -68,14 +87,17 @@ public enum TeamUpgrade {
         int[] slots = {10, 11, 12, 14, 15, 16};
         int i = 0;
         for (TeamUpgrade u : values()) {
+            org.bukkit.configuration.file.FileConfiguration cfg = g.config();
             int lvl = g.upgradeLevel(t, u);
-            int cost = u.nextCost(lvl);
+            int cost = u.nextCost(cfg, lvl);
             List<String> lore = new ArrayList<>();
             lore.add("<mut>" + u.desc);
             lore.add("<dim>" + u.detail);
             lore.add("");
-            if (!u.repeatable()) lore.add("<mut>Stufe: <txt>" + lvl + "<dim>/" + u.costs.length);
-            if (cost < 0) lore.add("<ok>✔ Voll ausgebaut");
+            if (!u.repeatable()) lore.add("<mut>Stufe: " + Msg.bar(lvl / (double) u.maxLevel(cfg), u.maxLevel(cfg) * 3, "acc")
+                    + " <txt>" + lvl + "<dim>/" + u.maxLevel(cfg));
+            else lore.add("<mut>Genutzt: <txt>" + lvl + "<dim>/" + u.maxLevel(cfg) + " <dim>· stellt " + u.repairPercent(cfg) + " % wieder her");
+            if (cost < 0) lore.add(u.repeatable() ? "<bad>✘ Keine Reparaturen mehr übrig" : "<ok>✔ Voll ausgebaut");
             else {
                 lore.add("<mut>Kosten: <acc>" + cost + " Teampunkte");
                 lore.add(points >= cost ? "<acc>» Klicken zum Kaufen" : "<bad>Zu wenig Teampunkte");

@@ -28,7 +28,11 @@ public final class ArenaGenerator {
         PIRATES("Piratenschiffe", 6000, Material.OAK_BOAT),
         SPACE("Raumschiffe", 18000, Material.END_ROD),
         ICE("Eisfestung", 6000, Material.PACKED_ICE),
-        NETHER("Netherfestung", 18000, Material.NETHER_BRICKS);
+        NETHER("Netherfestung", 18000, Material.NETHER_BRICKS),
+        JUNGLE("Dschungeltempel", 6000, Material.JUNGLE_SAPLING),
+        DESERT("Wüstentempel", 6000, Material.SANDSTONE),
+        ATLANTIS("Atlantis", 6000, Material.PRISMARINE),
+        CASTLE("Ritterburg", 13000, Material.STONE_BRICKS);
 
         private final String displayName;
         private final long time;
@@ -51,6 +55,10 @@ public final class ArenaGenerator {
                 case "space", "weltraum", "raumschiffe", "sterne" -> SPACE;
                 case "ice", "eis", "eisfestung" -> ICE;
                 case "nether", "netherfestung", "hölle" -> NETHER;
+                case "jungle", "dschungel", "dschungeltempel" -> JUNGLE;
+                case "desert", "wüste", "wueste", "wüstentempel" -> DESERT;
+                case "atlantis", "unterwasser", "ozean" -> ATLANTIS;
+                case "castle", "burg", "ritterburg", "mittelalter" -> CASTLE;
                 default -> CLASSIC;
             };
         }
@@ -59,8 +67,18 @@ public final class ArenaGenerator {
     public static final int BOTTOM = 49;
     public static final int TOP = 67;
     public static final int HALF_W = 16;
-    public static final int FRONT = 17;           // Vorderseite: 15 Blöcke Glas + Luftspalt vor dem Portal
-    public static final int GLASS_LAYERS = 15;
+    public static final int DEFAULT_LAYERS = 15;  // Schutzglas vor dem Portal (per Abstimmung 15/24/32)
+    public static final int MAX_LAYERS = 40;
+
+    /** Abstand Vorderseite ↔ Portalebene bei gegebener Glasdicke. */
+    public static int front(int layers) {
+        return layers + 2;
+    }
+
+    /** Spawn-Abstand vor der Portalebene (vorne auf dem Dach). */
+    public static int spawnOffset(int layers) {
+        return Math.max(2, front(layers) - 5);
+    }
     public static final int BACK = 2;
     public static final int PORTAL_HALF_W = 10;
     public static final int PORTAL_BOTTOM = 51;
@@ -81,7 +99,7 @@ public final class ArenaGenerator {
             int s = side(t);
             int zp = s * distance;
             m.portal(t, new MapConfig.Box(-PORTAL_HALF_W, PORTAL_BOTTOM, zp, PORTAL_HALF_W, PORTAL_TOP, zp));
-            double spawnZ = zp - s * (FRONT - 5) + 0.5;   // vorne auf dem Dach, nah an der Kante
+            double spawnZ = zp - s * spawnOffset(DEFAULT_LAYERS) + 0.5;   // vorne auf dem Dach
             float yaw = t == Team.GREEN ? 0f : 180f;
             m.spawn(t, new MapConfig.Spawn(0.5, TOP + 1, spawnZ, yaw, 0f));
         }
@@ -92,7 +110,11 @@ public final class ArenaGenerator {
     }
 
     public static void build(World w, int distance, Theme theme) {
-        for (Team t : Team.values()) buildBase(w, t, side(t) * distance, theme);
+        build(w, distance, theme, DEFAULT_LAYERS);
+    }
+
+    public static void build(World w, int distance, Theme theme, int layers) {
+        for (Team t : Team.values()) buildBase(w, t, side(t) * distance, theme, layers);
         buildSign(w);
         environment(w, distance, theme);
         for (int x = -HALF_W; x <= HALF_W; x++) set(w, x, BOTTOM - 9, 0, Material.RED_CONCRETE);
@@ -120,9 +142,28 @@ public final class ArenaGenerator {
         }
     }
 
-    private static void buildBase(World w, Team t, int zp, Theme th) {
+    /** Basen mit neuer Glasdicke neu bauen (Abstimmung in der Wartelobby). */
+    public static void rebuildBases(World w, int distance, Theme theme, int layers) {
+        for (Team t : Team.values()) {
+            int zp = side(t) * distance;
+            int s = zp < 0 ? -1 : 1;
+            int zA = zp - s * (front(MAX_LAYERS) + 3), zB = zp + s * (BACK + 3);
+            zA = s < 0 ? Math.min(zA, -1) : Math.max(zA, 1);   // nie über die Mittellinie hinaus
+            for (int x = -HALF_W - 9; x <= HALF_W + 9; x++) {
+                for (int y = BOTTOM - 8; y <= TOP + 22; y++) {
+                    for (int z = Math.min(zA, zB); z <= Math.max(zA, zB); z++) {
+                        Block b = w.getBlockAt(x, y, z);
+                        if (!b.getType().isAir()) b.setType(Material.AIR, false);
+                    }
+                }
+            }
+            buildBase(w, t, zp, theme, layers);
+        }
+    }
+
+    private static void buildBase(World w, Team t, int zp, Theme th, int layers) {
         int s = zp < 0 ? -1 : 1;
-        int zFront = zp - s * FRONT;
+        int zFront = zp - s * front(layers);
         int zBack = zp + s * BACK;
         int zMin = Math.min(zFront, zBack), zMax = Math.max(zFront, zBack);
 
@@ -145,7 +186,7 @@ public final class ArenaGenerator {
                             }
                         } else {
                             int depth = (z - zp) * -s;    // Abstand vor dem Portal
-                            if (depth >= 2 && depth < 2 + GLASS_LAYERS) set(w, x, y, z, t.glass());   // 15 Blöcke Schutzglas
+                            if (depth >= 2 && depth < 2 + layers) set(w, x, y, z, t.glass());   // Schutzglas
                         }
                         continue;
                     }
@@ -168,6 +209,10 @@ public final class ArenaGenerator {
             case SPACE -> spaceExtras(w, t, zMin, zMax);
             case ICE -> iceExtras(w, zMin, zMax);
             case NETHER -> netherExtras(w, zMin, zMax);
+            case JUNGLE -> jungleExtras(w, zMin, zMax);
+            case DESERT -> desertExtras(w, zMin, zMax);
+            case ATLANTIS -> atlantisExtras(w, zMin, zMax);
+            case CASTLE -> castleExtras(w, t, zMin, zMax);
             default -> {
             }
         }
@@ -195,6 +240,35 @@ public final class ArenaGenerator {
                 if (y == TOP) yield Material.SNOW_BLOCK;
                 if (y == TOP - 2) yield t.floor();
                 yield Math.floorMod(y, 4) == 0 ? Material.BLUE_ICE : Material.PACKED_ICE;
+            }
+            case JUNGLE -> {
+                if (faces >= 2) yield Material.JUNGLE_LOG;
+                if (y == TOP) yield Material.MOSS_BLOCK;
+                if (y == TOP - 2) yield t.floor();
+                if (Math.floorMod(x * 7 + y * 3 + z, 5) == 0) yield Material.CRACKED_STONE_BRICKS;
+                yield Math.floorMod(y, 3) == 0 ? Material.MOSSY_COBBLESTONE : Material.MOSSY_STONE_BRICKS;
+            }
+            case DESERT -> {
+                if (faces >= 2) yield Material.CHISELED_SANDSTONE;
+                if (y == TOP) yield Material.SMOOTH_SANDSTONE;
+                if (y == TOP - 2 || y == BOTTOM + 3) yield t == Team.GREEN ? Material.LIME_TERRACOTTA : Material.RED_TERRACOTTA;
+                if (oz && y == TOP - 5 && Math.floorMod(x, 6) == 0) yield Material.ORANGE_GLAZED_TERRACOTTA;
+                yield Math.floorMod(y, 2) == 0 ? Material.CUT_SANDSTONE : Material.SANDSTONE;
+            }
+            case ATLANTIS -> {
+                if (faces >= 2) yield Material.DARK_PRISMARINE;
+                if (y == TOP) yield Material.PRISMARINE_BRICKS;
+                if (y == TOP - 2) yield t.floor();
+                if (oz && Math.floorMod(x, 5) == 0 && Math.floorMod(y, 5) == 1) yield Material.SEA_LANTERN;
+                yield Material.PRISMARINE;
+            }
+            case CASTLE -> {
+                if (faces >= 2) yield Material.POLISHED_ANDESITE;
+                if (y == TOP) yield Material.STONE_BRICKS;
+                if (y == TOP - 2) yield t == Team.GREEN ? Material.LIME_WOOL : Material.RED_WOOL;
+                if (oz && y == 60 && Math.floorMod(x, 5) == 0) yield Material.IRON_BARS;
+                int n = Math.floorMod(x * 13 + y * 7 + z * 3, 9);
+                yield n == 0 ? Material.MOSSY_STONE_BRICKS : n == 1 ? Material.CRACKED_STONE_BRICKS : Material.STONE_BRICKS;
             }
             case NETHER -> {
                 if (faces >= 2) yield Material.POLISHED_BLACKSTONE_BRICKS;
@@ -316,6 +390,78 @@ public final class ArenaGenerator {
         for (int x = -HALF_W + 2; x <= HALF_W - 2; x += 4) set(w, x, TOP + 1, (zMin + zMax) / 2, Material.NETHER_WART_BLOCK);
     }
 
+    private static void leaves(World w, int x, int y, int z) {
+        BlockData d = Material.JUNGLE_LEAVES.createBlockData();
+        if (d instanceof org.bukkit.block.data.type.Leaves l) l.setPersistent(true);   // sonst zerfallen sie
+        Block b = w.getBlockAt(x, y, z);
+        if (b.getType().isAir()) b.setBlockData(d, false);
+    }
+
+    private static void jungleExtras(World w, int zMin, int zMax) {
+        for (int cx : new int[]{-HALF_W, HALF_W}) {
+            for (int cz : new int[]{zMin, zMax}) {
+                for (int y = BOTTOM - 4; y <= TOP + 6; y++) set(w, cx, y, cz, Material.JUNGLE_LOG);
+                for (int dx = -3; dx <= 3; dx++)
+                    for (int dz = -3; dz <= 3; dz++)
+                        for (int dy = 0; dy <= 2; dy++)
+                            if (dx * dx + dz * dz + dy * dy * 2 <= 10) leaves(w, cx + dx, TOP + 5 + dy, cz + dz);
+            }
+        }
+        for (int x = -HALF_W + 2; x <= HALF_W - 2; x += 5) set(w, x, TOP + 1, (zMin + zMax) / 2, Material.MOSSY_COBBLESTONE_WALL);
+    }
+
+    private static void desertExtras(World w, int zMin, int zMax) {
+        // kleine Pyramiden auf den Ecken
+        for (int cx : new int[]{-HALF_W + 2, HALF_W - 2}) {
+            for (int cz : new int[]{zMin + 2, zMax - 2}) {
+                for (int lvl = 0; lvl <= 3; lvl++) {
+                    int r = 3 - lvl;
+                    for (int dx = -r; dx <= r; dx++)
+                        for (int dz = -r; dz <= r; dz++)
+                            set(w, cx + dx, TOP + 1 + lvl, cz + dz, lvl == 3 ? Material.GOLD_BLOCK : Material.SMOOTH_SANDSTONE);
+                }
+            }
+        }
+    }
+
+    private static void atlantisExtras(World w, int zMin, int zMax) {
+        for (int cx : new int[]{-HALF_W, HALF_W}) {
+            for (int cz : new int[]{zMin, zMax}) {
+                for (int y = BOTTOM - 5; y <= TOP + 7; y++) {
+                    set(w, cx, y, cz, Math.floorMod(y, 4) == 0 ? Material.SEA_LANTERN : Material.PRISMARINE_BRICKS);
+                }
+                set(w, cx, TOP + 8, cz, Material.CONDUIT);
+            }
+        }
+    }
+
+    private static void castleExtras(World w, Team t, int zMin, int zMax) {
+        Material flag = t == Team.GREEN ? Material.LIME_WOOL : Material.RED_WOOL;
+        for (int x = -HALF_W; x <= HALF_W; x++) {
+            for (int z = zMin; z <= zMax; z++) {
+                boolean edge = Math.abs(x) == HALF_W || z == zMin || z == zMax;
+                if (edge && Math.floorMod(x + z, 2) == 0) set(w, x, TOP + 1, z, Material.STONE_BRICKS);   // Zinnen
+            }
+        }
+        for (int cx : new int[]{-HALF_W, HALF_W}) {
+            for (int cz : new int[]{zMin, zMax}) {
+                for (int dx = -2; dx <= 2; dx++) {
+                    for (int dz = -2; dz <= 2; dz++) {
+                        if (dx * dx + dz * dz > 5) continue;
+                        for (int y = BOTTOM - 3; y <= TOP + 6; y++) set(w, cx + dx, y, cz + dz, Material.STONE_BRICKS);
+                        // Kegeldach
+                        int h = 3 - Math.max(Math.abs(dx), Math.abs(dz));
+                        for (int y = TOP + 7; y <= TOP + 7 + h; y++) set(w, cx + dx, y, cz + dz, Material.DARK_OAK_PLANKS);
+                    }
+                }
+                for (int y = TOP + 11; y <= TOP + 13; y++) set(w, cx, y, cz, Material.OAK_FENCE);
+                set(w, cx + 1, TOP + 13, cz, flag);
+                set(w, cx + 2, TOP + 13, cz, flag);
+                set(w, cx + 1, TOP + 12, cz, flag);
+            }
+        }
+    }
+
     // ── Umgebung ─────────────────────────────────────────────────────
 
     private static void environment(World w, int distance, Theme th) {
@@ -347,6 +493,37 @@ public final class ArenaGenerator {
                             set(w, cx + dx, BOTTOM - 22, cz + dz, Material.PACKED_ICE);
                             set(w, cx + dx, BOTTOM - 21, cz + dz, Material.SNOW_BLOCK);
                         }
+                    }
+                }
+            }
+            case ATLANTIS -> {
+                int y = BOTTOM - 18;
+                for (int x = -70; x <= 70; x++) {
+                    for (int z = -distance - 40; z <= distance + 40; z++) set(w, x, y, z, Material.WATER);
+                }
+                for (int i = 0; i < 10; i++) {
+                    int x = (r.nextBoolean() ? 1 : -1) * (30 + r.nextInt(30)), z = -distance + r.nextInt(distance * 2);
+                    int h = 6 + r.nextInt(14);
+                    for (int dy = 0; dy < h; dy++) set(w, x, y + dy, z, dy == h - 1 ? Material.SEA_LANTERN : Material.PRISMARINE_BRICKS);
+                }
+            }
+            case JUNGLE, DESERT, CASTLE -> {
+                Material top = th == Theme.JUNGLE ? Material.MOSS_BLOCK : th == Theme.DESERT ? Material.SMOOTH_SANDSTONE : Material.GRASS_BLOCK;
+                Material under = th == Theme.DESERT ? Material.SANDSTONE : Material.DIRT;
+                for (int i = 0; i < 14; i++) {
+                    int cx = (r.nextBoolean() ? 1 : -1) * (28 + r.nextInt(40)), cz = -distance + r.nextInt(distance * 2);
+                    int cy = 25 + r.nextInt(30), rad = 3 + r.nextInt(4);
+                    for (int dx = -rad; dx <= rad; dx++) {
+                        for (int dz = -rad; dz <= rad; dz++) {
+                            if (dx * dx + dz * dz > rad * rad) continue;
+                            int depth = rad - (int) Math.sqrt(dx * dx + dz * dz);
+                            set(w, cx + dx, cy, cz + dz, top);
+                            for (int d = 1; d <= depth; d++) set(w, cx + dx, cy - d, cz + dz, under);
+                        }
+                    }
+                    if (th == Theme.JUNGLE) {
+                        for (int dy = 1; dy <= 5; dy++) set(w, cx, cy + dy, cz, Material.JUNGLE_LOG);
+                        for (int dx = -2; dx <= 2; dx++) for (int dz = -2; dz <= 2; dz++) leaves(w, cx + dx, cy + 6, cz + dz);
                     }
                 }
             }

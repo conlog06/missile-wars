@@ -34,18 +34,24 @@ public class Gui implements InventoryHolder {
         return inv;
     }
 
-    /** Rahmen aus Glasscheiben (außen dunkel, Ecken in Akzentfarbe). */
+    /**
+     * Rahmen im MissileWars-Look: dunkler Rand, oben ein Farbverlauf (Rot → Orange → Gold → Orange → Rot),
+     * leere Innenfelder dezent hellgrau.
+     */
     public Gui frame() {
         int size = inv.getSize();
         int rows = size / 9;
-        ItemStack edge = pane(Material.GRAY_STAINED_GLASS_PANE);
-        ItemStack corner = pane(Material.ORANGE_STAINED_GLASS_PANE);
+        ItemStack edge = pane(Material.BLACK_STAINED_GLASS_PANE);
+        ItemStack inner = pane(Material.LIGHT_GRAY_STAINED_GLASS_PANE);
+        Material[] top = {Material.RED_STAINED_GLASS_PANE, Material.ORANGE_STAINED_GLASS_PANE, Material.YELLOW_STAINED_GLASS_PANE,
+                Material.BLACK_STAINED_GLASS_PANE, Material.BLACK_STAINED_GLASS_PANE, Material.BLACK_STAINED_GLASS_PANE,
+                Material.YELLOW_STAINED_GLASS_PANE, Material.ORANGE_STAINED_GLASS_PANE, Material.RED_STAINED_GLASS_PANE};
         for (int i = 0; i < size; i++) {
             int r = i / 9, c = i % 9;
-            boolean border = r == 0 || r == rows - 1 || c == 0 || c == 8;
-            if (!border) continue;
-            boolean isCorner = (r == 0 || r == rows - 1) && (c == 0 || c == 8 || c == 1 || c == 7);
-            inv.setItem(i, isCorner ? corner : edge);
+            if (r == 0) inv.setItem(i, pane(top[c]));
+            else if (r == rows - 1 && (c == 0 || c == 8)) inv.setItem(i, pane(Material.ORANGE_STAINED_GLASS_PANE));
+            else if (r == rows - 1 || c == 0 || c == 8) inv.setItem(i, edge);
+            else inv.setItem(i, inner);
         }
         return this;
     }
@@ -97,6 +103,7 @@ public class Gui implements InventoryHolder {
         it.editMeta(meta -> {
             meta.displayName(Msg.item(name));
             List<net.kyori.adventure.text.Component> l = new ArrayList<>();
+            if (lore.length > 0) l.add(Msg.item("<dim>▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"));   // Trennlinie unter dem Namen
             for (String s : lore) l.add(Msg.item(s));
             meta.lore(l);
             meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);

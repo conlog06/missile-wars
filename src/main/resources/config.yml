@@ -2,7 +2,7 @@
 #  MissileWars – Konfiguration
 # ─────────────────────────────────────────────
 
-config-version: 6
+config-version: 7
 
 # ── Einzelspiel ─────────────────────────────────────────────────
 # Es gibt immer nur EINE Runde. Spieler kommen beim Joinen automatisch rein,
@@ -60,20 +60,20 @@ coins:
 shop:
   round-limit: 10         # Käufe pro Spieler und Runde
   round-items:            # Item: Preis in Coins
-    tomahawk: 30
-    lightning: 20
-    interceptor: 25
-    arrow: 25
-    gemini: 40
-    guardian: 40
-    shieldbuster: 45
-    juggernaut: 90
-    shield: 20
-    platform: 20
-    fireball: 15
-    windcharge: 15
-    enderpearl: 30
-    arrows: 10
+    tomahawk: 45
+    lightning: 30
+    interceptor: 40
+    arrow: 40
+    gemini: 60
+    guardian: 60
+    shieldbuster: 70
+    juggernaut: 135
+    shield: 30
+    platform: 30
+    fireball: 25
+    windcharge: 25
+    enderpearl: 45
+    arrows: 15
 
 # ── VIP / Premium ───────────────────────────────────────────────
 vip:
@@ -97,15 +97,29 @@ map-rating: true          # nach der Runde Map bewerten (👍/👎)
 
 # ── Bereit-Pflicht ──────────────────────────────────────────────
 ready:
-  required-up-to: 2       # bis zu so vielen Spielern startet die Runde nur, wenn alle "Bereit" drücken
-  timeout: 60             # wer in dieser Zeit nicht bereit ist, fliegt aus der Runde
+  required-up-to: 100     # Runde startet nur, wenn alle "Bereit" drücken (kein Auto-Start)
+  timeout: 60             # AFK-Check: wer in dieser Zeit nicht bereit ist, fliegt aus der Runde
   timeout-action: leave   # leave = aus der Runde, kick = vom Server, lobby-server = auf den Bungee-Lobby-Server
+
+# ── Glasdicke-Abstimmung (Wartelobby) ───────────────────────────
+glass-vote:
+  enabled: true
+  options: [15, 24, 32]   # Glas-Schichten vor dem Portal (max. 40)
+
+# ── Team-Upgrades (Preise in Teampunkten) ───────────────────────
+upgrades:
+  supply:        {costs: [120, 260, 420]}
+  turbo:         {costs: [200, 450]}
+  shields:       {costs: [100, 220]}
+  armor:         {costs: [150, 350]}
+  glass-repair:  {costs: [150], max-uses: 3, percent: 35}    # jede Nutzung teurer (150, 300, 450)
+  portal-repair: {costs: [300], max-uses: 2, percent: 10}
 
 end-animation: true       # nach der Runde: Wiederholung, wie das Portal zerstört wurde
 
 respawn-delay: 3          # Sekunden als Zuschauer nach dem Tod (0 = sofort)
 time-limit-minutes: 15    # danach gewinnt das Team mit dem intakteren Portal (0 = aus)
-afk-seconds: 90           # AFK-Spieler werden zu Zuschauern (0 = aus)
+afk-seconds: 60           # AFK-Spieler werden zu Zuschauern (0 = aus)
 kits: true                # Kit-Auswahl in der Wartelobby
 lobby-double-jump: true   # Doppelsprung in der Wartelobby
 team-compass: true        # Kompass zeigt auf das gegnerische Portal

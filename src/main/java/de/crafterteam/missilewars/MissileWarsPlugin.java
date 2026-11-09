@@ -48,6 +48,15 @@ public final class MissileWarsPlugin extends JavaPlugin {
             getConfig().set("config-version", 4);
             getLogger().info("Config migriert: Portal-HP-Modus (25 %) für Fortschritt im Scoreboard.");
         }
+        if (cfgVersion < 7) {
+            // 2.5: Start nur per Bereit (AFK-Check 60 s), teurere Runden-Shop-Preise
+            getConfig().set("ready.required-up-to", 100);
+            getConfig().set("afk-seconds", 60);
+            org.bukkit.configuration.ConfigurationSection shop = getConfig().getConfigurationSection("shop.round-items");
+            if (shop != null) for (String k : shop.getKeys(false)) shop.set(k, (int) Math.round(shop.getInt(k) * 1.5));
+            getConfig().set("config-version", 7);
+            getLogger().info("Config migriert: Start nur per Bereit, AFK 60 s, Runden-Shop-Preise x1,5.");
+        }
         getConfig().options().copyDefaults(true);   // neue Optionen in alte config.yml übernehmen
         saveConfig();
         maps = new MapManager(this);
