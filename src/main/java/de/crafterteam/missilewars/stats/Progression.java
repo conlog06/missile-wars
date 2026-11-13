@@ -161,6 +161,106 @@ public final class Progression {
         gui.open(p);
     }
 
+    // ── Tagesaufgaben ────────────────────────────────────────────────
+
+    public record Quest(String id, String name, String desc, Material icon, Stat stat, int goal, int reward) {}
+
+    public static final List<Quest> QUESTS = List.of(
+            new Quest("kills8", "Jäger", "Erziele 8 Kills", Material.IRON_SWORD, Stat.KILLS, 8, 80),
+            new Quest("kills15", "Kopfjäger", "Erziele 15 Kills", Material.DIAMOND_SWORD, Stat.KILLS, 15, 140),
+            new Quest("win1", "Siegeswille", "Gewinne 1 Runde", Material.GOLD_INGOT, Stat.WINS, 1, 60),
+            new Quest("win3", "Siegesserie", "Gewinne 3 Runden", Material.GOLD_BLOCK, Stat.WINS, 3, 160),
+            new Quest("games3", "Dauerbrenner", "Spiele 3 Runden", Material.CLOCK, Stat.GAMES, 3, 70),
+            new Quest("missiles20", "Raketenmann", "Starte 20 Raketen", Material.TNT, Stat.MISSILES, 20, 90),
+            new Quest("missiles40", "Dauerfeuer", "Starte 40 Raketen", Material.TNT_MINECART, Stat.MISSILES, 40, 150),
+            new Quest("portal1", "Portalknacker", "Zerstöre 1 Portal", Material.OBSIDIAN, Stat.PORTALS, 1, 100),
+            new Quest("intercept3", "Luftabwehr", "Fange 3 Raketen ab", Material.PHANTOM_MEMBRANE, Stat.INTERCEPTS, 3, 90),
+            new Quest("assists5", "Teamplayer", "Sammle 5 Assists", Material.LEAD, Stat.ASSISTS, 5, 70),
+            new Quest("airdrop2", "Schatzsucher", "Öffne 2 Airdrops", Material.CHEST, Stat.AIRDROPS, 2, 80));
+
+    /** Die 3 Aufgaben des Spielers für heute (pro Spieler & Tag fest, verschiedene Statistiken). */
+    public List<Quest> todaysQuests(Player p) {
+        long day = LocalDate.now().toEpochDay();
+        String key = String.valueOf(day);
+        if (!key.equals(plugin.stats().selected(p, "quest:day", ""))) {
+            // neuer Tag → Fortschritt zurücksetzen
+            Entry e = plugin.stats().entry(p);
+            e.selected.keySet().removeIf(k -> k.startsWith("quest:"));
+            plugin.stats().select(p, "quest:day", key);
+        }
+        List<Quest> pool = new ArrayList<>(QUESTS);
+        java.util.Collections.shuffle(pool, new java.util.Random(day * 31L + p.getUniqueId().hashCode()));
+        List<Quest> out = new ArrayList<>();
+        java.util.Set<Stat> used = java.util.EnumSet.noneOf(Stat.class);
+        for (Quest q : pool) {
+            if (out.size() >= 3) break;
+            if (used.add(q.stat())) out.add(q);
+        }
+        return out;
+    }
+
+    public int questProgressOf(Player p, Quest q) {
+        try {
+            return Integer.parseInt(plugin.stats().selected(p, "quest:p:" + q.id(), "0"));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    public int questsDone(Player p) {
+        int n = 0;
+        for (Quest q : todaysQuests(p)) if (questProgressOf(p, q) >= q.goal()) n++;
+        return n;
+    }
+
+    /** Wird bei jeder Statistik-Änderung aufgerufen. */
+    public void questProgress(Player p, Stat stat, int amount) {
+        if (!plugin.getConfig().getBoolean("quests.enabled", true)) return;
+        List<Quest> qs = todaysQuests(p);
+        for (Quest q : qs) {
+            if (q.stat() != stat) continue;
+            int before = questProgressOf(p, q);
+            if (before >= q.goal()) continue;
+            int now = Math.min(q.goal(), before + amount);
+            plugin.stats().select(p, "quest:p:" + q.id(), String.valueOf(now));
+            if (now < q.goal()) {
+                p.sendActionBar(Msg.mm("<mut>Aufgabe <txt>" + q.name() + " <dim>" + now + "/" + q.goal()));
+                continue;
+            }
+            int reward = q.reward() * (p.hasPermission("missilewars.vip") ? 2 : 1);
+            plugin.stats().add(p, Stat.COINS, reward);
+            Msg.send(p, "<ok>✔ Tagesaufgabe erledigt: <txt>" + q.name() + " <acc>+" + reward + " Coins");
+            p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.7f, 1.3f);
+            if (questsDone(p) == qs.size() && !"1".equals(plugin.stats().selected(p, "quest:bonus", "0"))) {
+                plugin.stats().select(p, "quest:bonus", "1");
+                int bonus = plugin.getConfig().getInt("quests.all-bonus", 100);
+                plugin.stats().add(p, Stat.COINS, bonus);
+                p.showTitle(Title.title(Msg.mm("<acc><bold>Alle Aufgaben erledigt!"), Msg.mm("<ok>+" + bonus + " Bonus-Coins"),
+                        Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(2), Duration.ofMillis(500))));
+            }
+        }
+    }
+
+    public void openQuests(Player p) {
+        List<Quest> qs = todaysQuests(p);
+        Gui gui = new Gui(3, "<logo> <dim>» <acc>Tagesaufgaben <dim>(" + questsDone(p) + "/" + qs.size() + ")").frame();
+        int[] slots = {11, 13, 15};
+        for (int i = 0; i < qs.size(); i++) {
+            Quest q = qs.get(i);
+            int have = questProgressOf(p, q);
+            boolean ok = have >= q.goal();
+            org.bukkit.inventory.ItemStack it = Gui.item(q.icon(), (ok ? "<ok><bold>✔ " : "<pri><bold>") + q.name(),
+                    "<mut>" + q.desc(), "",
+                    Msg.bar(have / (double) q.goal(), 14, ok ? "ok" : "acc") + " <txt>" + have + "<dim>/" + q.goal(),
+                    "<mut>Belohnung: <acc>" + q.reward() + " Coins" + (p.hasPermission("missilewars.vip") ? " <dim>(VIP x2)" : ""),
+                    ok ? "<ok>Erledigt!" : "<dim>Läuft automatisch mit");
+            gui.set(slots[i], ok ? Gui.glow(it) : it, null);
+        }
+        gui.set(22, Gui.item(Material.CLOCK, "<mut>Neue Aufgaben um Mitternacht",
+                "<mut>Alle erledigt: <acc>+" + plugin.getConfig().getInt("quests.all-bonus", 100) + " Bonus-Coins"), null);
+        gui.open(p);
+    }
+
     /** Für ToIntFunction-Nutzer (z. B. Hologramme). */
     public static ToIntFunction<Entry> levelFn() {
         return Progression::level;

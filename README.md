@@ -22,6 +22,15 @@ Alte Clients (1.8 / 1.12) kommen per **ViaVersion + ViaBackwards** auf den Serve
 
 Die Raketen werden vom Plugin bewegt (wie Flugmaschinen, aber ohne echtes Redstone) – das läuft stabil, ohne Lag und unabhängig von Redstone-Änderungen in neuen Versionen.
 
+## Neu in 2.7.0
+- **Verlängerung** – ist es am Zeitlimit knapp (≤ 10 % Portal-Unterschied), gibt es bis zu 3 Minuten Verlängerung: der nächste Portaltreffer entscheidet.
+- **Comeback-Bonus** – fällt das eigene Portal das erste Mal unter 50 %, bekommt das Team einmalig Schild + Abfangjäger.
+- **Tagesaufgaben** – jeden Tag 3 Aufgaben (Kills, Raketen, Portale …) mit Coins, Bonus für alle 3. `/mw aufgaben` oder im Lobby-Menü.
+- **Siegesserie** – Bonus-Coins für Siege in Folge, Ansage ab 3 Siegen.
+- **Revanche** – nach der Runde per Klick automatisch für dieselbe Map in der nächsten Lobby stimmen.
+- **Performance** – Arena-Welten ohne Mob-Spawns, Random-Ticks, Feuer-Ausbreitung & Tageszyklus, eigene Sicht-/Simulationsweite, Aufräumen alter Projektile, schnellere Physik-Prüfung am Portal, Stats werden gebündelt & asynchron gespeichert.
+- **Bugfixes** – Feuer breitete sich in der Arena aus (Dschungel-Map!), verirrte Feuerbälle luden endlos Chunks, Tagesbelohnungs-Serie ging nach Neustart verloren, leere Lobbys behielten alte Abstimmungen.
+
 ## 2.6.1
 - **Fix Bereit:** Beim Map-Wechsel durch die Abstimmung ging der Bereit-Status verloren (man musste nochmal drücken) – wird jetzt übernommen.
 - **Neue Lobby automatisch:** Startet eine Runde, öffnet sich sofort die nächste Lobby (bis `queues.max-games`). Leere Lobbys bleiben offen.

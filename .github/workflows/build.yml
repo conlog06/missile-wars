@@ -42,6 +42,7 @@ jobs:
           body: |
             Missile Wars für **Paper 26.3** (Java 21+).
             JAR in `plugins/` legen, Server starten, ingame `/mw join` – die Standard-Arena wird automatisch generiert.
+            Neu in 2.7: Verlängerung bei knappem Stand, Comeback-Bonus, Tagesaufgaben, Siegesserie, Revanche-Knopf, viele Performance-Optimierungen und Bugfixes.
             Neu in 2.6: Mehrere Lobbys (Standard 2) mit Auto-Zuteilung, Start per Bereit ab 2 Spielern / 60-s-Timer ab 4, synchroner Timer (Bossbar, XP, Scoreboard), AFK nur als Hinweis nach 5 min, Join-/Leave-Nachrichten, Performance-Optimierungen.
             Neu in 2.5: Raketen explodieren zuverlässig und gehen nicht mehr durch Wände, Start nur per Bereit (60 s = AFK-Check), Glasdicke-Abstimmung (15/24/32), 4 neue Themen-Maps (Dschungel, Wüste, Atlantis, Burg), neue GUIs, fairere Preise & begrenzte Teil-Reparaturen.
             Neu in 2.4: 5 Arena-Themes (Klassisch, Piraten, Raumschiffe, Eis, Nether), mehr Schutzglas, Schleich-Platzierung, Bereit-Pflicht, neue Lobby-Hotbar & Scoreboard, Team-Upgrades, Leistungsbewertung, End-Animation.

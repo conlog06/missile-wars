@@ -99,14 +99,33 @@ public final class StatsManager {
                 for (Stat st : Stat.values()) e.values.put(st, s.getInt(st.key()));
                 e.unlocks.addAll(s.getStringList("unlocks"));
                 ConfigurationSection sel = s.getConfigurationSection("selected");
-                if (sel != null) for (String k : sel.getKeys(false)) e.selected.put(k, sel.getString(k));
+                // getKeys(true): Schlüssel mit Punkt (daily.day) liegen verschachtelt – vorher gingen sie beim Neustart verloren
+                if (sel != null) for (String k : sel.getKeys(true)) if (!sel.isConfigurationSection(k)) e.selected.put(k, sel.getString(k));
                 entries.put(e.id, e);
             } catch (IllegalArgumentException ignored) {
             }
         }
     }
 
+    private boolean saveQueued;
+    private final Object writeLock = new Object();
+
+    /** Speichern gebündelt & asynchron (max. alle 5 s), beim Abschalten synchron. */
     public void save() {
+        if (!dirty) return;
+        if (!plugin.isEnabled()) {
+            saveNow(false);
+            return;
+        }
+        if (saveQueued) return;
+        saveQueued = true;
+        org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            saveQueued = false;
+            saveNow(true);
+        }, 100L);
+    }
+
+    private void saveNow(boolean async) {
         if (!dirty) return;
         YamlConfiguration y = new YamlConfiguration();
         for (Entry e : entries.values()) {
@@ -115,12 +134,23 @@ public final class StatsManager {
             y.set(e.id + ".unlocks", new ArrayList<>(e.unlocks));
             for (Map.Entry<String, String> sel : e.selected.entrySet()) y.set(e.id + ".selected." + sel.getKey(), sel.getValue());
         }
-        try {
-            y.save(file);
-            dirty = false;
-        } catch (IOException ex) {
-            plugin.getLogger().log(Level.WARNING, "stats.yml konnte nicht gespeichert werden", ex);
-        }
+        String data = y.saveToString();
+        dirty = false;
+        Runnable write = () -> {
+            synchronized (writeLock) {
+                try {
+                    java.nio.file.Path tmp = file.toPath().resolveSibling("stats.yml.tmp");
+                    java.nio.file.Files.createDirectories(file.toPath().getParent());
+                    java.nio.file.Files.writeString(tmp, data, java.nio.charset.StandardCharsets.UTF_8);
+                    java.nio.file.Files.move(tmp, file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException ex) {
+                    dirty = true;
+                    plugin.getLogger().log(Level.WARNING, "stats.yml konnte nicht gespeichert werden", ex);
+                }
+            }
+        };
+        if (async) org.bukkit.Bukkit.getScheduler().runTaskAsynchronously(plugin, write);
+        else write.run();
     }
 
     public void add(Player p, Stat stat, int amount) {
@@ -129,7 +159,10 @@ public final class StatsManager {
         int levelBefore = stat == Stat.COINS ? 0 : de.crafterteam.missilewars.stats.Progression.level(e);
         e.values.merge(stat, amount, Integer::sum);
         dirty = true;
-        if (stat != Stat.COINS && plugin.progression() != null) plugin.progression().afterStat(p, e, levelBefore);
+        if (stat != Stat.COINS && plugin.progression() != null) {
+            plugin.progression().afterStat(p, e, levelBefore);
+            if (amount > 0) plugin.progression().questProgress(p, stat, amount);
+        }
     }
 
     /** Höchstwert speichern (z. B. beste Killserie). */

@@ -52,6 +52,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -97,6 +98,11 @@ public final class Game {
     private final Map<UUID, String> names = new HashMap<>();
     private final BossBar bossBar = BossBar.bossBar(Component.empty(), 1f, BossBar.Color.YELLOW, BossBar.Overlay.PROGRESS);
     private boolean suddenDeath;
+    private boolean overtime;
+    private int overtimeLeft;
+    private final Map<Team, Integer> overtimeBase = new EnumMap<>(Team.class);
+    private final Set<Team> comebackGiven = EnumSet.noneOf(Team.class);
+    private int warnDist = Integer.MIN_VALUE;
     private final Map<Team, Long> lastWarning = new EnumMap<>(Team.class);
     private final Map<Team, UUID> lastPortalHitter = new EnumMap<>(Team.class);
     private final Map<Team, Integer> teamPoints = new EnumMap<>(Team.class);
@@ -162,6 +168,7 @@ public final class Game {
             if (w == null) throw new GameException("Welt konnte nicht geladen werden.");
         }
         w.setAutoSave(false);
+        applyWorldRules(plugin, w);
         w.setDifficulty(Difficulty.NORMAL);
         w.setTime(map.type() == MapConfig.Type.GENERATED ? map.theme().time() : 6000);
         w.setStorm(false);
@@ -341,6 +348,56 @@ public final class Game {
         updateBoard();
     }
 
+    /** Performance & Bugfixes: kein Feuer-Ausbreiten, keine Mobs, kein Random-Tick, feste Tageszeit, kleinere Sichtweite. */
+    private static void applyWorldRules(MissileWarsPlugin plugin, World w) {
+        w.setGameRule(org.bukkit.GameRules.ADVANCE_TIME, false);
+        w.setGameRule(org.bukkit.GameRules.ADVANCE_WEATHER, false);
+        w.setGameRule(org.bukkit.GameRules.SPAWN_MOBS, false);
+        w.setGameRule(org.bukkit.GameRules.SPAWN_MONSTERS, false);
+        w.setGameRule(org.bukkit.GameRules.SPAWN_PHANTOMS, false);
+        w.setGameRule(org.bukkit.GameRules.SPAWN_PATROLS, false);
+        w.setGameRule(org.bukkit.GameRules.SPAWN_WANDERING_TRADERS, false);
+        w.setGameRule(org.bukkit.GameRules.RAIDS, false);
+        w.setGameRule(org.bukkit.GameRules.RANDOM_TICK_SPEED, 0);
+        w.setGameRule(org.bukkit.GameRules.FIRE_SPREAD_RADIUS_AROUND_PLAYER, 0);
+        w.setGameRule(org.bukkit.GameRules.BLOCK_DROPS, false);
+        w.setGameRule(org.bukkit.GameRules.ENTITY_DROPS, false);
+        w.setGameRule(org.bukkit.GameRules.SPREAD_VINES, false);
+        w.setGameRule(org.bukkit.GameRules.SHOW_ADVANCEMENT_MESSAGES, false);
+        int view = plugin.getConfig().getInt("performance.view-distance", 8);
+        int sim = plugin.getConfig().getInt("performance.simulation-distance", 6);
+        try {
+            if (view >= 2) w.setViewDistance(Math.min(32, view));
+            if (sim >= 2) w.setSimulationDistance(Math.min(32, sim));
+        } catch (RuntimeException ignored) {
+            // ältere/abweichende Server-Implementierung – dann eben Server-Standard
+        }
+    }
+
+    /** Liegt ein Block im Bereich eines Portals (±2)? Für die schnelle Physik-Prüfung. */
+    public boolean nearPortal(int x, int y, int z) {
+        for (Team t : Team.values()) {
+            MapConfig.Box b = map.portal(t);
+            if (x >= b.minX() - 2 && x <= b.maxX() + 2 && y >= b.minY() - 2 && y <= b.maxY() + 2
+                    && z >= b.minZ() - 2 && z <= b.maxZ() + 2) return true;
+        }
+        return false;
+    }
+
+    /** Alte Projektile & Items aufräumen – fliegende Feuerbälle laden sonst endlos Chunks. */
+    private void cleanupEntities() {
+        double minY = map.deathY() - 30;
+        for (org.bukkit.entity.Entity e : world.getEntities()) {
+            if (e instanceof Player || e instanceof org.bukkit.entity.Display || e instanceof org.bukkit.entity.TNTPrimed) continue;
+            int age = e.getTicksLived();
+            boolean old = e instanceof org.bukkit.entity.Fireball ? age > 200
+                    : e instanceof org.bukkit.entity.AbstractArrow a ? age > (a.isInBlock() ? 200 : 400)
+                    : e instanceof org.bukkit.entity.Item ? age > 100
+                    : e instanceof org.bukkit.entity.Projectile && age > 300;
+            if (old || e.getLocation().getY() < minY) e.remove();
+        }
+    }
+
     private long lastErrorLog;
 
     private void safe(String what, Runnable r) {
@@ -451,6 +508,11 @@ public final class Game {
             giveLobbyItems(p, t);
             p.showBossBar(bossBar);
             touch(p);
+            String rematch = plugin.games().takeRematch(p);
+            if (rematch != null && votingOpen()) {
+                MapConfig rm = plugin.maps().get(rematch);
+                if (rm != null && votableMaps().contains(rm)) vote(p, rematch);
+            }
             broadcast(Msg.esc(p.getName()) + " ist beigetreten. <dim>(" + teams.size() + "/" + max() + ")");
             p.sendMessage(Msg.prefixed("Du bist in Team " + t.colored() + "<mut>. Wechseln: ")
                     .append(Msg.mm("<ok><u>[Grün]").clickEvent(ClickEvent.runCommand("/mw team gruen")))
@@ -540,6 +602,8 @@ public final class Game {
                 forcedStart = false;
                 readyTimer = -1;
                 ready.clear();
+                votes.clear();
+                layerVotes.clear();
                 updateBoard();
                 return;
             }
@@ -882,6 +946,7 @@ public final class Game {
                 checkAfk();
                 if (state != State.RUNNING) return;
                 checkTimeLimit();
+                if (seconds % 5 == 0) cleanupEntities();
                 if (state != State.RUNNING) return;
                 updateBossBar();
             }
@@ -955,7 +1020,8 @@ public final class Game {
         int iv = interval();
         bossBar.progress(Math.max(0f, Math.min(1f, itemTimer / (float) iv)));
         bossBar.color(suddenDeath ? BossBar.Color.RED : BossBar.Color.YELLOW);
-        String prefix = suddenDeath ? "<bad><bold>SUDDEN DEATH</bold> <dim>| " : "";
+        String prefix = overtime ? "<bad><bold>VERLÄNGERUNG " + formatTime(Math.max(0, overtimeLeft)) + "</bold> <dim>| "
+                : suddenDeath ? "<bad><bold>SUDDEN DEATH</bold> <dim>| " : "";
         if (activeEvent != null) prefix += "<info>⚡ " + eventName(activeEvent) + " <dim>(" + eventLeft + "s) | ";
         bossBar.name(Msg.mm(prefix + "<mut>Nächstes Item in <acc>" + itemTimer + "s"));
     }
@@ -1086,6 +1152,12 @@ public final class Game {
             for (Team t : Team.values()) {
                 int left = portalLeft(t);
                 portalHp.put(t, hp(t, left));
+                if (overtime && left < overtimeBase.getOrDefault(t, left)) {
+                    updatePortalHolograms();
+                    end(t.other(), "<bad><bold>Verlängerung entschieden!</bold> <mut>Team " + t.other().colored() + " <mut>trifft zuerst.");
+                    return;
+                }
+                checkComeback(t);
                 if (isPortalLost(t, left)) {
                     String by = "";
                     UUID hitter = lastPortalHitter.get(t);
@@ -1112,6 +1184,54 @@ public final class Game {
         }
         // Raketen-Vorschau
         if (state == State.RUNNING && tickCounter % 3 == 0) updatePreviews();
+    }
+
+    /** Siegesserie: Bonus-Coins pro Sieg in Folge, Ansage ab 3. */
+    private void winStreak(Player p, boolean won) {
+        if (!plugin.getConfig().getBoolean("win-streak.enabled", true)) return;
+        int streak = 0;
+        try {
+            streak = Integer.parseInt(plugin.stats().selected(p, "winstreak", "0"));
+        } catch (NumberFormatException ignored) {
+        }
+        if (!won) {
+            if (streak >= 3) broadcast("<mut>Die Siegesserie von <txt>" + Msg.esc(p.getName()) + " <mut>(" + streak + ") ist gerissen.");
+            plugin.stats().select(p, "winstreak", "0");
+            return;
+        }
+        streak++;
+        plugin.stats().select(p, "winstreak", String.valueOf(streak));
+        int best = 0;
+        try {
+            best = Integer.parseInt(plugin.stats().selected(p, "winstreak:best", "0"));
+        } catch (NumberFormatException ignored) {
+        }
+        if (streak > best) plugin.stats().select(p, "winstreak:best", String.valueOf(streak));
+        if (streak >= 2) {
+            int bonus = Math.min(streak - 1, plugin.getConfig().getInt("win-streak.max-steps", 5)) * plugin.getConfig().getInt("win-streak.coins-per-win", 10);
+            if (bonus > 0) plugin.shop().give(p, bonus, "Siegesserie x" + streak);
+        }
+        if (streak >= 3) Msg.broadcastLobby(plugin, "<acc>🔥 <txt>" + Msg.esc(p.getName()) + " <mut>hat <acc><bold>" + streak + " Siege in Folge<mut>!");
+    }
+
+    /** Comeback-Bonus: fällt ein Portal das erste Mal unter X %, bekommt das Team einmalig Verteidigungs-Items. */
+    private void checkComeback(Team t) {
+        if (comebackGiven.contains(t) || !plugin.getConfig().getBoolean("comeback.enabled", true)) return;
+        int hp = portalHp.getOrDefault(t, 100);
+        if (hp > plugin.getConfig().getInt("comeback.below-percent", 50)) return;
+        comebackGiven.add(t);
+        List<String> ids = plugin.getConfig().getStringList("comeback.items");
+        if (ids.isEmpty()) ids = List.of(GameItems.SHIELD, "interceptor");
+        for (Player p : teamPlayers(t)) {
+            for (String id : ids) {
+                ItemStack it = plugin.items().create(id);
+                if (it != null) p.getInventory().addItem(it);
+            }
+            p.showTitle(Title.title(Msg.mm("<info><bold>🛡 Letzte Verteidigung"), Msg.mm("<mut>Euer Portal ist angeschlagen – Bonus-Items!"),
+                    Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(2), Duration.ofMillis(400))));
+            p.playSound(p.getLocation(), Sound.ITEM_TOTEM_USE, 0.5f, 1.2f);
+        }
+        broadcast("<info>🛡 Team " + t.colored() + " <mut>bekommt den <info>Comeback-Bonus<mut> (Portal unter " + hp + " %).");
     }
 
     // ── Portal-HP & Hologramme ───────────────────────────────────────
@@ -1249,7 +1369,8 @@ public final class Game {
 
     /** Verteidiger warnen, wenn eine Rakete nah ans eigene Portal kommt. */
     private void checkWarning(Missile m) {
-        int dist = plugin.getConfig().getInt("warning.distance", 20);
+        if (warnDist == Integer.MIN_VALUE) warnDist = plugin.getConfig().getInt("warning.distance", 20);
+        int dist = warnDist;
         if (dist <= 0) {
             m.markWarned();
             return;
@@ -1554,6 +1675,25 @@ public final class Game {
         if (left > 0) return;
         double g = portalLeft(Team.GREEN) / (double) portalBlocks.get(Team.GREEN).size();
         double r = portalLeft(Team.RED) / (double) portalBlocks.get(Team.RED).size();
+        // Verlängerung: bei knappem Stand entscheidet der nächste Portaltreffer
+        if (!overtime && plugin.getConfig().getBoolean("overtime.enabled", true)
+                && Math.abs(g - r) * 100 <= plugin.getConfig().getDouble("overtime.max-difference", 10)) {
+            overtime = true;
+            overtimeLeft = Math.max(30, plugin.getConfig().getInt("overtime.seconds", 180));
+            for (Team t : Team.values()) overtimeBase.put(t, portalLeft(t));
+            broadcast("<bad><bold>⚔ VERLÄNGERUNG!</bold> <mut>Knapper Stand – <txt>der nächste Portaltreffer entscheidet<mut>! <dim>("
+                    + formatTime(overtimeLeft) + ")");
+            for (Player p : everyone()) {
+                p.showTitle(Title.title(Msg.mm("<bad><bold>VERLÄNGERUNG"), Msg.mm("<mut>Nächster Portaltreffer gewinnt!"),
+                        Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(3), Duration.ofMillis(500))));
+                p.playSound(p.getLocation(), Sound.EVENT_RAID_HORN, 1f, 1f);
+            }
+            return;
+        }
+        if (overtime && --overtimeLeft > 0) {
+            if (overtimeLeft == 30 || overtimeLeft == 10) broadcast("<bad>Verlängerung: noch " + overtimeLeft + " Sekunden!");
+            return;
+        }
         Team winner;
         String why;
         if (Math.abs(g - r) > 1e-9) {
@@ -1983,10 +2123,20 @@ public final class Game {
             plugin.stats().add(p, team(p) == winner ? Stat.WINS : Stat.LOSSES, 1);
             if (team(p) == winner) plugin.shop().reward(p, "win", "Sieg");
             else plugin.shop().reward(p, "loss", "Teilnahme");
+            winStreak(p, team(p) == winner);
             plugin.preview().hide(p);
             p.hideBossBar(bossBar);
         }
         sendSummary(winner);
+        // Revanche: Klick = automatisch für dieselbe Map in der nächsten Lobby stimmen
+        if (plugin.getConfig().getBoolean("rematch.enabled", true)) {
+            Component rm = Msg.prefixed("<mut>Nochmal auf <txt>" + Msg.esc(map.name()) + "<mut>? ")
+                    .append(Msg.mm("<acc><bold>[⟳ Revanche]").clickEvent(ClickEvent.runCommand("/mw revanche")));
+            for (Player p : players()) {
+                plugin.games().offerRematch(p, map.name());
+                p.sendMessage(rm);
+            }
+        }
         // Map bewerten
         if (plugin.getConfig().getBoolean("map-rating", true)) {
             Component rate = Msg.prefixed("Wie fandest du <txt>" + Msg.esc(map.name()) + "<mut>? ")
@@ -2278,7 +2428,9 @@ public final class Game {
                     ? "<mut>Status <acc>Warte auf Spieler <dim>(" + teams.size() + "/" + min() + ")"
                     : "<mut>Status <ok>Warte auf Bereit");
             case COUNTDOWN -> lines.add("<mut>Status <ok>Start in " + Math.max(0, countdown) + " s");
-            case RUNNING -> lines.add("<mut>Zeit <txt><bold>" + formatTime(seconds) + "</bold>" + (suddenDeath ? " <bad>SUDDEN DEATH" : ""));
+            case RUNNING -> lines.add(overtime
+                    ? "<bad><bold>VERLÄNGERUNG</bold> <txt>" + formatTime(Math.max(0, overtimeLeft))
+                    : "<mut>Zeit <txt><bold>" + formatTime(seconds) + "</bold>" + (suddenDeath ? " <bad>SUDDEN DEATH" : ""));
             case ENDING -> lines.add("<mut>Status <pri>Runde beendet");
         }
         if (state == State.WAITING || state == State.COUNTDOWN) {

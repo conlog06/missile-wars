@@ -259,6 +259,9 @@ public final class Menus {
                     "<mut>Du bist in Lobby <txt>#" + g.id(), "<mut>Offene Runden: <txt>" + plugin.games().all().size(), "",
                     "<acc>» Übersicht"), p -> lobbies(plugin, p));
         }
+        gui.set(24, Gui.item(Material.WRITABLE_BOOK, "<pri><bold>Tagesaufgaben",
+                "<mut>3 neue Aufgaben jeden Tag", "<mut>Erledigt: <ok>" + plugin.progression().questsDone(viewer) + "<dim>/3", "",
+                "<acc>» Ansehen"), p -> plugin.progression().openQuests(p));
         if (!g.layerOptions().isEmpty()) {
             gui.set(22, Gui.item(Material.LIME_STAINED_GLASS, "<info><bold>Glasdicke abstimmen",
                     "<mut>Wie viele Blöcke Glas vor den Portalen?", "<mut>Mehr Glas = längere Runden.", "",

@@ -157,6 +157,35 @@ public final class GameManager {
         return pool.isEmpty() ? null : pool.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(pool.size()));
     }
 
+    // ── Revanche ─────────────────────────────────────────────────────
+
+    private final Map<UUID, String> rematchOffer = new HashMap<>();
+    private final Map<UUID, String> rematchVote = new HashMap<>();
+
+    void offerRematch(Player p, String map) {
+        rematchOffer.put(p.getUniqueId(), map);
+    }
+
+    /** /mw revanche: Stimme wird in der nächsten Lobby automatisch abgegeben. */
+    public void voteRematch(Player p) {
+        String map = rematchOffer.remove(p.getUniqueId());
+        if (map == null) {
+            de.crafterteam.missilewars.util.Msg.send(p, "<bad>Gerade gibt es keine Revanche.");
+            return;
+        }
+        Game g = get(p);
+        if (g != null && g.state() != Game.State.ENDING && g.state() != Game.State.RUNNING) {
+            if (g.votingOpen()) g.vote(p, map);
+            return;
+        }
+        rematchVote.put(p.getUniqueId(), map);
+        de.crafterteam.missilewars.util.Msg.send(p, "<ok>Revanche! <mut>Du stimmst in der nächsten Lobby für <txt>" + map + "<mut>.");
+    }
+
+    String takeRematch(Player p) {
+        return rematchVote.remove(p.getUniqueId());
+    }
+
     /** Queue-Modus: gibt es keine offene Lobby (und ist noch Platz), wird eine neue geöffnet. */
     public void ensureOpenLobby() {
         if (!plugin.isEnabled() || !singleGame() || openLobby() != null || activeCount() >= maxGames()) return;

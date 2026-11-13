@@ -65,7 +65,10 @@ public final class GameListener implements Listener {
         reloadBreakable();
     }
 
+    private boolean doubleJump = true;
+
     public void reloadBreakable() {
+        doubleJump = plugin.getConfig().getBoolean("lobby-double-jump", true);
         breakable.clear();
         List<String> list = plugin.getConfig().getStringList("breakable");
         for (String s : list) {
@@ -219,7 +222,7 @@ public final class GameListener implements Listener {
     }
 
     private boolean doubleJumpAllowed(Player p, Game g) {
-        return plugin.getConfig().getBoolean("lobby-double-jump", true)
+        return doubleJump
                 && (g.state() == Game.State.WAITING || g.state() == Game.State.COUNTDOWN)
                 && !p.getWorld().equals(g.world())
                 && p.getGameMode() != GameMode.CREATIVE && p.getGameMode() != GameMode.SPECTATOR;
@@ -478,6 +481,9 @@ public final class GameListener implements Listener {
     public void onPhysics(org.bukkit.event.block.BlockPhysicsEvent e) {
         org.bukkit.block.Block b = e.getBlock();
         if (!b.getWorld().getName().startsWith(Game.WORLD_PREFIX)) return;
+        // Schnell-Check: nur Blöcke direkt am Portal brauchen die teure Nachbar-Prüfung
+        Game pg = gameOf(b.getWorld());
+        if (pg == null || !pg.nearPortal(b.getX(), b.getY(), b.getZ())) return;
         if (b.getType() == Material.NETHER_PORTAL) {
             e.setCancelled(true);
             return;

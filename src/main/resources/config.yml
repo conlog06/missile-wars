@@ -261,3 +261,35 @@ breakable:
   - RED_STAINED_GLASS
   - WHITE_STAINED_GLASS
   - GLASS
+
+# ── Performance ─────────────────────────────────────────────────
+performance:
+  view-distance: 8          # Sichtweite der Arena-Welten in Chunks (0 = Server-Standard)
+  simulation-distance: 6    # Simulationsweite (0 = Server-Standard)
+
+# ── Verlängerung: bei knappem Stand am Zeitlimit entscheidet der nächste Portaltreffer ──
+overtime:
+  enabled: true
+  max-difference: 10        # Portal-HP-Unterschied in Prozentpunkten, bis zu dem es Verlängerung gibt
+  seconds: 180
+
+# ── Comeback-Bonus: einmalig, wenn das eigene Portal unter X % fällt ──
+comeback:
+  enabled: true
+  below-percent: 50
+  items: [shield, interceptor]
+
+# ── Siegesserie: Bonus-Coins pro Sieg in Folge ──────────────────
+win-streak:
+  enabled: true
+  coins-per-win: 10         # 2. Sieg in Folge +10, 3. +20 …
+  max-steps: 5
+
+# ── Revanche-Knopf nach der Runde ───────────────────────────────
+rematch:
+  enabled: true
+
+# ── Tagesaufgaben (3 pro Tag) ───────────────────────────────────
+quests:
+  enabled: true
+  all-bonus: 100            # Bonus, wenn alle 3 erledigt sind
