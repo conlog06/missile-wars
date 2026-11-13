@@ -100,6 +100,19 @@ public final class MissileWarsPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(nameTags, this);
         // Stats regelmäßig sichern
         Bukkit.getScheduler().runTaskTimer(this, stats::save, 20L * 300, 20L * 300);
+        // MySQL: Ranglisten alle 5 min mit Werten anderer Server abgleichen; Stats beim Join frisch laden
+        Bukkit.getScheduler().runTaskTimer(this, stats::refreshAll, 20L * 310, 20L * 300);
+        getServer().getPluginManager().registerEvents(new org.bukkit.event.Listener() {
+            @org.bukkit.event.EventHandler(priority = org.bukkit.event.EventPriority.LOWEST)
+            public void onJoin(org.bukkit.event.player.PlayerJoinEvent e) {
+                stats.refreshPlayer(e.getPlayer());
+            }
+
+            @org.bukkit.event.EventHandler(priority = org.bukkit.event.EventPriority.MONITOR)
+            public void onQuit(org.bukkit.event.player.PlayerQuitEvent e) {
+                stats.save();
+            }
+        }, this);
 
         listener = new GameListener(this);
         getServer().getPluginManager().registerEvents(listener, this);
@@ -107,7 +120,21 @@ public final class MissileWarsPlugin extends JavaPlugin {
         // Modernes Paper-Command-System (Brigadier, Lifecycle) statt plugin.yml
         MwCommand cmd = new MwCommand(this);
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event ->
-                event.registrar().register("mw", "Missile Wars", List.of("missilewars", "missiles"), cmd));
+        {
+            event.registrar().register("mw", "Missile Wars", List.of("missilewars", "missiles"), cmd);
+            // Kurzbefehle ohne /mw (in der config unter shortcuts abschaltbar/erweiterbar)
+            if (getConfig().getBoolean("shortcuts.enabled", true)) {
+                for (String s : getConfig().getStringList("shortcuts.commands")) {
+                    String name = s.toLowerCase(Locale.ROOT).trim();
+                    if (name.isEmpty() || name.equals("mw")) continue;
+                    try {
+                        event.registrar().register(name, "Missile Wars: /mw " + name, cmd.shortcut(name));
+                    } catch (RuntimeException ex) {
+                        getLogger().warning("Kurzbefehl /" + name + " konnte nicht registriert werden: " + ex.getMessage());
+                    }
+                }
+            }
+        });
         Bukkit.getScheduler().runTaskLater(this, () -> games.ensureOpenLobby(), 60L);   // erste Lobby vorbereiten
         getLogger().info("MissileWars aktiv – " + maps.all().size() + " Map(s).");
     }
@@ -119,7 +146,7 @@ public final class MissileWarsPlugin extends JavaPlugin {
         if (preview != null) preview.hideAll();
         if (holograms != null) holograms.despawnAll();
         if (waitingLobby != null) waitingLobby.shutdown();
-        if (stats != null) stats.save();
+        if (stats != null) stats.shutdown();
     }
 
     public StatsManager stats() { return stats; }

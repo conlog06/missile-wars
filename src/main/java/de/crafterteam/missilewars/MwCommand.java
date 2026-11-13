@@ -46,6 +46,29 @@ public final class MwCommand implements BasicCommand {
         handle(source.getSender(), args);
     }
 
+    /** Kurzbefehl ohne /mw, z. B. /aufgaben → /mw aufgaben. */
+    public BasicCommand shortcut(String sub) {
+        return new BasicCommand() {
+            @Override
+            public void execute(CommandSourceStack source, String[] args) {
+                handle(source.getSender(), prepend(sub, args));
+            }
+
+            @Override
+            public Collection<String> suggest(CommandSourceStack source, String[] args) {
+                String[] a = prepend(sub, args.length == 0 ? new String[]{""} : args);
+                return complete(source.getSender(), a);
+            }
+        };
+    }
+
+    private static String[] prepend(String sub, String[] args) {
+        String[] out = new String[args.length + 1];
+        out[0] = sub;
+        System.arraycopy(args, 0, out, 1, args.length);
+        return out;
+    }
+
     @Override
     public Collection<String> suggest(CommandSourceStack source, String[] args) {
         String[] a = args.length == 0 ? new String[]{""} : args;

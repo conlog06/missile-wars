@@ -22,6 +22,11 @@ Alte Clients (1.8 / 1.12) kommen per **ViaVersion + ViaBackwards** auf den Serve
 
 Die Raketen werden vom Plugin bewegt (wie Flugmaschinen, aber ohne echtes Redstone) – das läuft stabil, ohne Lag und unabhängig von Redstone-Änderungen in neuen Versionen.
 
+## Neu in 2.8.0
+- **Befehle ohne /mw** – `/aufgaben`, `/lobbys`, `/bereit`, `/shop`, `/stats`, `/top`, `/revanche`, `/leave` … (Liste in `shortcuts.commands`, `/mw …` geht weiterhin).
+- **MySQL oder lokal** – `storage.type: local` (stats.yml) oder `mysql` (MySQL/MariaDB). Beim Wechsel wird die stats.yml automatisch übernommen; ist die DB weg, läuft das Plugin lokal weiter.
+- **Netzwerk-tauglich** – mit MySQL teilen sich mehrere Server Coins, Stats & Aufgaben (Daten werden beim Join frisch geladen). BungeeCord/Velocity bleibt optional.
+
 ## Neu in 2.7.0
 - **Verlängerung** – ist es am Zeitlimit knapp (≤ 10 % Portal-Unterschied), gibt es bis zu 3 Minuten Verlängerung: der nächste Portaltreffer entscheidet.
 - **Comeback-Bonus** – fällt das eigene Portal das erste Mal unter 50 %, bekommt das Team einmalig Schild + Abfangjäger.

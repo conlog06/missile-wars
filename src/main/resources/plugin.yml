@@ -4,6 +4,9 @@ main: de.crafterteam.missilewars.MissileWarsPlugin
 api-version: '26.3'
 author: Constantin
 softdepend: [LuckPerms]
+# MySQL-Treiber wird von Paper beim ersten Start automatisch geladen (nur für storage.type: mysql nötig)
+libraries:
+  - com.mysql:mysql-connector-j:9.1.0
 description: Missile Wars für Paper 26.3 – Raketen, Schilde, Feuerbälle, generierte & eigene Maps
 permissions:
   missilewars.play:

@@ -23,7 +23,7 @@ server-mode:
 
 # ── BungeeCord / Velocity ───────────────────────────────────────
 bungee:
-  enabled: false
+  enabled: false          # optional – das Plugin läuft auch komplett ohne BungeeCord/Velocity
   lobby-server: lobby     # Servername aus der Proxy-Config ("Verlassen" schickt dorthin)
 
 # ── Wartelobby ──────────────────────────────────────────────────
@@ -293,3 +293,24 @@ rematch:
 quests:
   enabled: true
   all-bonus: 100            # Bonus, wenn alle 3 erledigt sind
+
+# ── Kurzbefehle ohne /mw (z. B. /aufgaben statt /mw aufgaben) – Änderungen erst nach Neustart ──
+shortcuts:
+  enabled: true
+  commands: [join, leave, verlassen, zuschauen, lobbys, aufgaben, revanche, bereit, shop, coins, stats, top,
+             raketen, erfolge, daily, level, upgrades, vote, abstimmen, kit, menu, teleporter, bewerten]
+
+# ── Stats-Speicher ──────────────────────────────────────────────
+# local = plugins/MissileWars/stats.yml · mysql = MySQL/MariaDB (für mehrere Server im Bungee-/Velocity-Netzwerk)
+# Beim ersten Wechsel auf mysql wird eine vorhandene stats.yml automatisch übernommen.
+# Ist MySQL nicht erreichbar, nutzt das Plugin automatisch die lokale Datei.
+storage:
+  type: local
+  mysql:
+    host: localhost
+    port: 3306
+    database: missilewars
+    user: root
+    password: ''
+    table-prefix: mw_
+    properties: 'useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8'
