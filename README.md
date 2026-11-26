@@ -22,6 +22,13 @@ Alte Clients (1.8 / 1.12) kommen per **ViaVersion + ViaBackwards** auf den Serve
 
 Die Raketen werden vom Plugin bewegt (wie Flugmaschinen, aber ohne echtes Redstone) – das läuft stabil, ohne Lag und unabhängig von Redstone-Änderungen in neuen Versionen.
 
+## Neu in 2.10.0 – BungeeSystem-Integration
+Arbeitet mit dem [BungeeSystem](https://github.com/conlog06/bungeesystem-crafterteam) auf dem Proxy zusammen (wird automatisch erkannt):
+- **Ban, Mute, Report, Freunde, Party & Clans** funktionieren auch in MissileWars – die Party folgt dem Leader in die Runde
+- **Clantag** hinter dem Namen in Tab & über dem Kopf (`bungeesystem.clantag`)
+- **Clan gründen** kostet die gemeinsamen Coins – wird hier abgebucht, der Coin-Stand im Scoreboard bleibt richtig
+- **Teamchat bleibt** – das BungeeSystem formatiert den Chat auf `MissileWars*`-Servern standardmäßig nicht
+
 ## Neu in 2.9.0 – LobbySystem-Integration
 Verbindet MissileWars mit dem [LobbySystem](https://github.com/conlog06/lobbysystem-claude) über dieselbe MySQL-Datenbank:
 - **Gemeinsame Coins** – was in MissileWars verdient oder im Shop ausgegeben wird, gilt direkt für das Lobby-Guthaben

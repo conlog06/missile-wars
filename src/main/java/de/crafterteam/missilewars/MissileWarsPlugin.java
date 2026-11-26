@@ -25,6 +25,7 @@ public final class MissileWarsPlugin extends JavaPlugin {
     private GameListener listener;
     private StatsManager stats;
     private de.crafterteam.missilewars.network.LobbyBridge lobbyBridge;
+    private de.crafterteam.missilewars.network.ProxyBridge proxyBridge;
     private JoinSigns signs;
     private MissilePreview preview;
     private LeaderboardHolograms holograms;
@@ -79,6 +80,8 @@ public final class MissileWarsPlugin extends JavaPlugin {
         stats = new StatsManager(this);
         lobbyBridge = new de.crafterteam.missilewars.network.LobbyBridge(this);
         lobbyBridge.start();
+        proxyBridge = new de.crafterteam.missilewars.network.ProxyBridge(this);
+        proxyBridge.start();
         signs = new JoinSigns(this);
         preview = new MissilePreview(this);
         holograms = new LeaderboardHolograms(this);
@@ -116,6 +119,7 @@ public final class MissileWarsPlugin extends JavaPlugin {
             public void onQuit(org.bukkit.event.player.PlayerQuitEvent e) {
                 stats.save();
                 lobbyBridge.onQuit(e.getPlayer());
+                proxyBridge.forget(e.getPlayer().getUniqueId());
             }
         }, this);
 
@@ -157,6 +161,7 @@ public final class MissileWarsPlugin extends JavaPlugin {
 
     public StatsManager stats() { return stats; }
     public de.crafterteam.missilewars.network.LobbyBridge lobbyBridge() { return lobbyBridge; }
+    public de.crafterteam.missilewars.network.ProxyBridge proxyBridge() { return proxyBridge; }
     public JoinSigns signs() { return signs; }
     public MissilePreview preview() { return preview; }
     public LeaderboardHolograms holograms() { return holograms; }
