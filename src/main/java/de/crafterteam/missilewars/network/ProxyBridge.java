@@ -112,6 +112,30 @@ public final class ProxyBridge implements PluginMessageListener {
                         out.writeBoolean(ok);
                     });
                 }
+                case "COINS_ADD" -> {
+                    int id = in.readInt();
+                    UUID uuid = UUID.fromString(in.readUTF());
+                    long amount = in.readLong();
+                    Player p = Bukkit.getPlayer(uuid);
+                    if (p == null || plugin.stats() == null || amount > Integer.MAX_VALUE
+                            || plugin.lobbyBridge() == null || !plugin.lobbyBridge().sharedCoins()) return;
+                    // add() schreibt auch ins gemeinsame Lobby-Guthaben (ls_players)
+                    plugin.stats().add(p, de.crafterteam.missilewars.stats.StatsManager.Stat.COINS, (int) amount);
+                    send(p, "COINS_RESULT", out -> {
+                        out.writeInt(id);
+                        out.writeBoolean(true);
+                    });
+                }
+                case "COINS_GET" -> {
+                    int id = in.readInt();
+                    Player p = Bukkit.getPlayer(UUID.fromString(in.readUTF()));
+                    if (p == null || plugin.stats() == null || plugin.lobbyBridge() == null || !plugin.lobbyBridge().sharedCoins()) return;
+                    int coins = plugin.stats().coins(p);
+                    send(p, "COINS_VALUE", out -> {
+                        out.writeInt(id);
+                        out.writeLong(coins);
+                    });
+                }
                 default -> {
                 }
             }
