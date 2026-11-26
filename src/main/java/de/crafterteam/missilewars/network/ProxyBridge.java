@@ -84,8 +84,23 @@ public final class ProxyBridge implements PluginMessageListener {
             String type = in.readUTF();
             switch (type) {
                 case "HELLO" -> {
+                    in.readInt();
+                    in.readUTF();
+                    if (in.available() > 0) in.readUTF();
+                    String serverName = in.available() > 0 ? in.readUTF() : "";
                     if (!active) plugin.getLogger().info("BungeeSystem erkannt.");
                     active = true;
+                    var lb = plugin.lobbyBridge();
+                    if (lb != null && lb.enabled()) lb.serverName(serverName);
+                    // Antwort: Teamchat → eigenes Chat-Format; welche Datenbank für Coins/Freunde genutzt wird
+                    boolean mysql = lb != null && lb.enabled();
+                    send(carrier, "SERVER_INFO", out -> {
+                        out.writeUTF("MissileWars");
+                        out.writeUTF(plugin.getPluginMeta().getVersion());
+                        out.writeBoolean(true);
+                        out.writeUTF(mysql ? "mysql" : "aus (lobbysystem.enabled: false)");
+                        out.writeUTF(mysql ? lb.databaseId() : "");
+                    });
                 }
                 case "CLANTAG" -> {
                     UUID uuid = UUID.fromString(in.readUTF());

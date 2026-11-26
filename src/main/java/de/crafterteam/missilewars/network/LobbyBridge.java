@@ -55,6 +55,18 @@ public final class LobbyBridge {
         this.plugin = plugin;
     }
 
+    /** Echten Servernamen vom Proxy (BungeeSystem) übernehmen. */
+    public void serverName(String name) {
+        if (name == null || name.isBlank() || name.equals(serverName)) return;
+        plugin.getLogger().info("Servername vom Proxy übernommen: " + name + " (config: " + serverName + ")");
+        serverName = name;
+    }
+
+    public String databaseId() {
+        var m = plugin.getConfig().getConfigurationSection("lobbysystem.mysql");
+        return m == null ? "" : m.getString("host", "localhost") + ":" + m.getInt("port", 3306) + "/" + m.getString("database", "lobby");
+    }
+
     public boolean enabled() {
         return enabled;
     }
