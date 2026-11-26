@@ -22,6 +22,21 @@ Alte Clients (1.8 / 1.12) kommen per **ViaVersion + ViaBackwards** auf den Serve
 
 Die Raketen werden vom Plugin bewegt (wie Flugmaschinen, aber ohne echtes Redstone) – das läuft stabil, ohne Lag und unabhängig von Redstone-Änderungen in neuen Versionen.
 
+## Neu in 2.9.0 – LobbySystem-Integration
+Verbindet MissileWars mit dem [LobbySystem](https://github.com/conlog06/lobbysystem-claude) über dieselbe MySQL-Datenbank:
+- **Gemeinsame Coins** – was in MissileWars verdient oder im Shop ausgegeben wird, gilt direkt für das Lobby-Guthaben
+- **Freunde** sehen „online auf MissileWars-1" und können per `/friend jump` nachkommen
+- **Navigator & Lobby-Switcher** zeigen Live-Spielerzahl und Status (Wartet / Läuft)
+- **Bestenlisten in der Lobby** (Siege, Kills) und MissileWars-Stats im Lobby-Profil
+
+```yaml
+lobbysystem:
+  enabled: true
+  server-name: MissileWars-1   # Name aus der Proxy-Config
+  shared-coins: true
+  mysql: { host: localhost, port: 3306, database: lobby, user: root, password: '' }
+```
+
 ## Neu in 2.8.0
 - **Befehle ohne /mw** – `/aufgaben`, `/lobbys`, `/bereit`, `/shop`, `/stats`, `/top`, `/revanche`, `/leave` … (Liste in `shortcuts.commands`, `/mw …` geht weiterhin).
 - **MySQL oder lokal** – `storage.type: local` (stats.yml) oder `mysql` (MySQL/MariaDB). Beim Wechsel wird die stats.yml automatisch übernommen; ist die DB weg, läuft das Plugin lokal weiter.

@@ -24,6 +24,7 @@ public final class MissileWarsPlugin extends JavaPlugin {
     private GameItems items;
     private GameListener listener;
     private StatsManager stats;
+    private de.crafterteam.missilewars.network.LobbyBridge lobbyBridge;
     private JoinSigns signs;
     private MissilePreview preview;
     private LeaderboardHolograms holograms;
@@ -76,6 +77,8 @@ public final class MissileWarsPlugin extends JavaPlugin {
         games = new GameManager(this);
         items = new GameItems(this);
         stats = new StatsManager(this);
+        lobbyBridge = new de.crafterteam.missilewars.network.LobbyBridge(this);
+        lobbyBridge.start();
         signs = new JoinSigns(this);
         preview = new MissilePreview(this);
         holograms = new LeaderboardHolograms(this);
@@ -106,11 +109,13 @@ public final class MissileWarsPlugin extends JavaPlugin {
             @org.bukkit.event.EventHandler(priority = org.bukkit.event.EventPriority.LOWEST)
             public void onJoin(org.bukkit.event.player.PlayerJoinEvent e) {
                 stats.refreshPlayer(e.getPlayer());
+                lobbyBridge.onJoin(e.getPlayer());
             }
 
             @org.bukkit.event.EventHandler(priority = org.bukkit.event.EventPriority.MONITOR)
             public void onQuit(org.bukkit.event.player.PlayerQuitEvent e) {
                 stats.save();
+                lobbyBridge.onQuit(e.getPlayer());
             }
         }, this);
 
@@ -147,9 +152,11 @@ public final class MissileWarsPlugin extends JavaPlugin {
         if (holograms != null) holograms.despawnAll();
         if (waitingLobby != null) waitingLobby.shutdown();
         if (stats != null) stats.shutdown();
+        if (lobbyBridge != null) lobbyBridge.stop();
     }
 
     public StatsManager stats() { return stats; }
+    public de.crafterteam.missilewars.network.LobbyBridge lobbyBridge() { return lobbyBridge; }
     public JoinSigns signs() { return signs; }
     public MissilePreview preview() { return preview; }
     public LeaderboardHolograms holograms() { return holograms; }

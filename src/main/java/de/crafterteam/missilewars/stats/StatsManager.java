@@ -206,7 +206,10 @@ public final class StatsManager {
             org.bukkit.Bukkit.getScheduler().runTask(plugin, () -> {
                 if (changed.contains(id)) return;   // lokale, noch ungespeicherte Änderungen haben Vorrang
                 Entry e = fromText(id, text);
-                if (e != null) entries.put(id, e);
+                if (e != null) {
+                    entries.put(id, e);
+                    if (plugin.lobbyBridge() != null) plugin.lobbyBridge().applyCoins(e);
+                }
             });
         });
     }
@@ -254,6 +257,15 @@ public final class StatsManager {
 
     private void saveNow(boolean async) {
         if (!dirty) return;
+        // LobbySystem: geänderte Stats für Bestenlisten/Profil übertragen
+        if (plugin.lobbyBridge() != null && plugin.lobbyBridge().enabled()) {
+            List<Entry> snap = new ArrayList<>();
+            for (UUID id : changed) {
+                Entry e = entries.get(id);
+                if (e != null) snap.add(e);
+            }
+            plugin.lobbyBridge().pushStats(snap);
+        }
         Runnable write;
         if (sql != null) {
             Map<UUID, String[]> rows = new HashMap<>();
@@ -311,6 +323,7 @@ public final class StatsManager {
         int levelBefore = stat == Stat.COINS ? 0 : de.crafterteam.missilewars.stats.Progression.level(e);
         e.values.merge(stat, amount, Integer::sum);
         touch(e.id);
+        if (stat == Stat.COINS && plugin.lobbyBridge() != null) plugin.lobbyBridge().coinsChanged(e.id, e.name, amount);
         if (stat != Stat.COINS && plugin.progression() != null) {
             plugin.progression().afterStat(p, e, levelBefore);
             if (amount > 0) plugin.progression().questProgress(p, stat, amount);
@@ -343,6 +356,7 @@ public final class StatsManager {
         if (e.get(Stat.COINS) < amount) return false;
         e.values.put(Stat.COINS, e.get(Stat.COINS) - amount);
         touch(e.id);
+        if (plugin.lobbyBridge() != null) plugin.lobbyBridge().coinsChanged(e.id, e.name, -amount);
         return true;
     }
 

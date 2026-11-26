@@ -314,3 +314,21 @@ storage:
     password: ''
     table-prefix: mw_
     properties: 'useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8'
+
+# ── LobbySystem-Integration ─────────────────────────────────────
+# Verbindet MissileWars mit dem LobbySystem (github.com/conlog06/lobbysystem-claude).
+# Die Datenbank muss DIESELBE sein wie in der config.json des LobbySystems (mysql.database).
+#  • gemeinsame Coins: in MissileWars verdienen/ausgeben = Lobby-Guthaben
+#  • Freunde sehen „online auf MissileWars-1" und können per /friend jump nachkommen
+#  • Spielerzahl & Status im Lobby-Navigator, Bestenlisten (Siege/Kills) & Profil in der Lobby
+lobbysystem:
+  enabled: false
+  server-name: MissileWars-1     # Name dieses Servers in BungeeCord/Velocity
+  shared-coins: true
+  mysql:
+    host: localhost
+    port: 3306
+    database: lobby
+    user: root
+    password: ''
+    properties: 'useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8'
