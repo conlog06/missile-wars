@@ -55,7 +55,12 @@ public final class NameTags implements Listener {
     }
 
     public Component suffix(Player p) {
-        return parse(ranks.suffix(p));
+        Component s = parse(ranks.suffix(p));
+        // Clantag vom BungeeSystem hinter dem Namen (Tab & Nametag)
+        String tag = plugin.proxyBridge() == null ? null : plugin.proxyBridge().clanTag(p.getUniqueId());
+        if (tag == null || !plugin.getConfig().getBoolean("bungeesystem.clantag", true)) return s;
+        Component clan = parse(plugin.getConfig().getString("bungeesystem.clantag-format", " &8[&e{tag}&8]").replace("{tag}", tag));
+        return s.equals(Component.empty()) ? clan : s.append(clan);
     }
 
     public static Component parse(String raw) {

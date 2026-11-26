@@ -332,3 +332,10 @@ lobbysystem:
     user: root
     password: ''
     properties: 'useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8'
+
+# ── BungeeSystem (Proxy-Plugin: Ban/Mute/Report, Freunde/Party/Clan, Chat) ──
+# github.com/conlog06/bungeesystem-crafterteam – wird automatisch erkannt, keine Einstellung nötig.
+# Der Teamchat bleibt erhalten, solange "MissileWars*" in chat.format.ignored-servers des BungeeSystems steht.
+bungeesystem:
+  clantag: true                  # Clantag hinter dem Namen (Tab & über dem Kopf)
+  clantag-format: ' &8[&e{tag}&8]'
