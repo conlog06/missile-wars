@@ -132,6 +132,16 @@ public final class ServerMode implements Listener {
             p.setGameMode(GameMode.ADVENTURE);
             p.getInventory().clear();
         }
+        // Kommt der Spieler aus der Lobby mit Wunsch-Lobby ("Lobby #2" / "Neue Lobby starten")? Sonst automatisch.
+        var bridge = plugin.lobbyBridge();
+        if (bridge != null && bridge.enabled()) {
+            bridge.pendingJoin(p, lobbyId -> {
+                if (!p.isOnline() || plugin.games().get(p) != null) return;
+                if (lobbyId == null) plugin.games().quickJoin(p, null, false);
+                else plugin.games().joinRequested(p, lobbyId);
+            });
+            return;
+        }
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (p.isOnline() && plugin.games().get(p) == null) plugin.games().quickJoin(p, null, false);
         }, 5L);

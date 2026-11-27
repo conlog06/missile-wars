@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * </ul>
  * Report, Ban, Mute, Freunde, Party (folgt dem Leader) laufen komplett über den Proxy.
  */
-public final class ProxyBridge implements PluginMessageListener {
+public final class ProxyBridge implements PluginMessageListener, org.bukkit.event.Listener {
 
     public static final String CHANNEL = "crafterteam:bungee";
 
@@ -41,6 +41,7 @@ public final class ProxyBridge implements PluginMessageListener {
         var m = plugin.getServer().getMessenger();
         m.registerOutgoingPluginChannel(plugin, CHANNEL);
         m.registerIncomingPluginChannel(plugin, CHANNEL, this);
+        plugin.getServer().getPluginManager().registerEvents(this, plugin);
     }
 
     public boolean active() {
@@ -56,7 +57,20 @@ public final class ProxyBridge implements PluginMessageListener {
         return onlineTime.getOrDefault(uuid, -1L);
     }
 
+    /** Ressourcenpaket-Status (das Addon schickt das Pack auf diesem Server) → Icons an/aus. */
+    @org.bukkit.event.EventHandler
+    public void onPackStatus(org.bukkit.event.player.PlayerResourcePackStatusEvent e) {
+        switch (e.getStatus()) {
+            case SUCCESSFULLY_LOADED -> de.crafterteam.missilewars.util.Icons.loaded(e.getPlayer().getUniqueId(), true);
+            case DECLINED, FAILED_DOWNLOAD, INVALID_URL, FAILED_RELOAD, DISCARDED ->
+                    de.crafterteam.missilewars.util.Icons.loaded(e.getPlayer().getUniqueId(), false);
+            default -> {
+            }
+        }
+    }
+
     public void forget(UUID uuid) {
+        de.crafterteam.missilewars.util.Icons.loaded(uuid, false);
         clanTags.remove(uuid);
         onlineTime.remove(uuid);
     }
@@ -110,6 +124,14 @@ public final class ProxyBridge implements PluginMessageListener {
                     else clanTags.put(uuid, tag);
                 }
                 case "ONLINETIME" -> onlineTime.put(UUID.fromString(in.readUTF()), in.readLong());
+                case "PACK" -> {
+                    UUID uuid = UUID.fromString(in.readUTF());
+                    in.readUTF();
+                    in.readUTF();
+                    in.readBoolean();
+                    in.readUTF();
+                    if (in.readBoolean()) de.crafterteam.missilewars.util.Icons.loaded(uuid, true);
+                }
                 case "COINS_TAKE" -> {
                     int id = in.readInt();
                     UUID uuid = UUID.fromString(in.readUTF());

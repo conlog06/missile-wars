@@ -101,13 +101,13 @@ public final class Menus {
 
         StatsManager.Entry e = plugin.stats().get(viewer.getUniqueId());
         gui.set(38, Gui.head(viewer, "<pri><bold>Deine Statistiken", statLore(e).toArray(String[]::new)), null);
-        gui.set(40, Gui.item(Material.GOLD_BLOCK, "<acc><bold>Bestenliste", "<mut>Top 10 nach Siegen", "", "<acc>» Klicken"),
+        gui.set(40, de.crafterteam.missilewars.util.Icons.apply(Gui.item(Material.GOLD_BLOCK, "<acc><bold>Bestenliste", "<mut>Top 10 nach Siegen", "", "<acc>» Klicken"), viewer, "mw_stats"),
                 p -> top(plugin, p));
-        gui.set(39, Gui.item(Material.EMERALD, "<ok><bold>Shop", "<mut>Coins: <acc>" + plugin.stats().coins(viewer), "", "<acc>» Öffnen"),
+        gui.set(39, de.crafterteam.missilewars.util.Icons.apply(Gui.item(Material.EMERALD, "<ok><bold>Shop", "<mut>Coins: <acc>" + plugin.stats().coins(viewer), "", "<acc>» Öffnen"), viewer, "mw_shop"),
                 p -> plugin.shop().open(p));
         gui.set(41, Gui.item(Material.KNOWLEDGE_BOOK, "<pri><bold>Raketen-Übersicht", "", "<acc>» Öffnen"),
                 p -> missiles(plugin, p));
-        gui.set(42, Gui.item(Material.BARRIER, "<bad>Schließen"), Player::closeInventory);
+        gui.set(42, de.crafterteam.missilewars.util.Icons.apply(Gui.item(Material.BARRIER, "<bad>Schließen"), viewer, "close"), Player::closeInventory);
         gui.open(viewer);
     }
 
@@ -237,27 +237,28 @@ public final class Menus {
     public static void lobby(MissileWarsPlugin plugin, de.crafterteam.missilewars.game.Game g, Player viewer) {
         Gui gui = new Gui(4, "<logo> <dim>» <mut>Wartelobby").frame();
         boolean vote = g.votingOpen() && g.votableMaps().size() > 1;
-        gui.set(10, Gui.item(vote ? Material.FILLED_MAP : Material.MAP, "<acc><bold>Map-Abstimmung",
+        gui.set(10, de.crafterteam.missilewars.util.Icons.apply(Gui.item(vote ? Material.FILLED_MAP : Material.MAP, "<acc><bold>Map-Abstimmung",
                 "<mut>Aktuell: <txt>" + g.map().name() + " <dim>(" + g.map().describe() + ")", "",
-                vote ? "<acc>» Abstimmen" : "<dim>Abstimmung geschlossen"),
+                vote ? "<acc>» Abstimmen" : "<dim>Abstimmung geschlossen"), viewer, "mw_vote"),
                 p -> { p.closeInventory(); de.crafterteam.missilewars.game.VoteMenu.open(plugin, g, p); });
-        gui.set(11, Gui.item(Material.CHEST, "<acc><bold>Kit", "<mut>Gewählt: <txt>" + g.kit(viewer).displayName(), "", "<acc>» Wählen"),
+        gui.set(11, de.crafterteam.missilewars.util.Icons.apply(Gui.item(Material.CHEST, "<acc><bold>Kit", "<mut>Gewählt: <txt>" + g.kit(viewer).displayName(), "", "<acc>» Wählen"), viewer, "mw_kit"),
                 p -> kits(plugin, g, p));
-        gui.set(12, Gui.item(Material.EMERALD, "<ok><bold>Shop", "<mut>Coins: <acc>" + plugin.stats().coins(viewer), "", "<acc>» Öffnen"),
+        gui.set(12, de.crafterteam.missilewars.util.Icons.apply(Gui.item(Material.EMERALD, "<ok><bold>Shop", "<mut>Coins: <acc>" + plugin.stats().coins(viewer), "", "<acc>» Öffnen"), viewer, "mw_shop"),
                 p -> plugin.shop().open(p));
-        gui.set(13, Gui.item(Material.KNOWLEDGE_BOOK, "<pri><bold>Raketen-Übersicht", "", "<acc>» Öffnen"), p -> missiles(plugin, p));
-        gui.set(14, Gui.item(Material.GOLDEN_HELMET, "<acc><bold>Erfolge & Level", "<mut>Level " + plugin.progression().level(viewer), "",
-                "<acc>» Öffnen"), p -> plugin.progression().openAchievements(p));
+        gui.set(13, de.crafterteam.missilewars.util.Icons.apply(Gui.item(Material.KNOWLEDGE_BOOK, "<pri><bold>Raketen-Übersicht", "", "<acc>» Öffnen"), viewer, "mode_missilewars"), p -> missiles(plugin, p));
+        gui.set(14, de.crafterteam.missilewars.util.Icons.apply(Gui.item(Material.GOLDEN_HELMET, "<acc><bold>Erfolge & Level", "<mut>Level " + plugin.progression().level(viewer), "",
+                "<acc>» Öffnen"), viewer, "mw_achievements"), p -> plugin.progression().openAchievements(p));
         gui.set(15, Gui.head(viewer, "<pri><bold>Statistiken & Bestenliste", "", "<acc>» Öffnen"), p -> main(plugin, p));
-        gui.set(16, Gui.item(Material.CLOCK, "<acc><bold>Tagesbelohnung", plugin.progression().dailyAvailable(viewer)
-                ? "<ok>Bereit zum Abholen!" : "<dim>Heute schon abgeholt", "", "<acc>» Abholen"), p -> {
+        // Kiste statt Uhr (Uhr wird bei manchen Clients als fehlende Textur angezeigt)
+        gui.set(16, de.crafterteam.missilewars.util.Icons.apply(Gui.item(Material.CHEST_MINECART, "<acc><bold>Tagesbelohnung", plugin.progression().dailyAvailable(viewer)
+                ? "<ok>Bereit zum Abholen!" : "<dim>Heute schon abgeholt", "", "<acc>» Abholen"), viewer, "daily"), p -> {
             plugin.progression().claimDaily(p);
             p.closeInventory();
         });
         if (plugin.games().maxGames() > 1) {
-            gui.set(20, Gui.item(Material.COMPASS, "<pri><bold>Lobby wechseln",
+            gui.set(20, de.crafterteam.missilewars.util.Icons.apply(Gui.item(Material.COMPASS, "<pri><bold>Lobby wechseln",
                     "<mut>Du bist in Lobby <txt>#" + g.id(), "<mut>Offene Runden: <txt>" + plugin.games().all().size(), "",
-                    "<acc>» Übersicht"), p -> lobbies(plugin, p));
+                    "<acc>» Übersicht"), viewer, "switcher"), p -> lobbies(plugin, p));
         }
         gui.set(24, Gui.item(Material.WRITABLE_BOOK, "<pri><bold>Tagesaufgaben",
                 "<mut>3 neue Aufgaben jeden Tag", "<mut>Erledigt: <ok>" + plugin.progression().questsDone(viewer) + "<dim>/3", "",

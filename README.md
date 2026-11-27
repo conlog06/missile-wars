@@ -22,6 +22,14 @@ Alte Clients (1.8 / 1.12) kommen per **ViaVersion + ViaBackwards** auf den Serve
 
 Die Raketen werden vom Plugin bewegt (wie Flugmaschinen, aber ohne echtes Redstone) – das läuft stabil, ohne Lag und unabhängig von Redstone-Änderungen in neuen Versionen.
 
+## Neu in 2.12.0 – Lobby-Auswahl aus der Lobby & Icons
+- **Lobby-Auswahl im LobbySystem-Navigator:** alle Runden dieses Servers mit Map, Spielern & Status (`ls_game_lobbies`, alle 2 s)
+- **Bestimmter Lobby beitreten** oder **Schnell beitreten** direkt aus der Lobby – der Server setzt dich beim Join in die gewählte Runde
+- **Neue Lobby starten:** sind alle Lobbys voll oder laufen, kann jeder Spieler aus der Lobby eine neue Runde öffnen
+  (bis `queues.player-start-max`, Standard 4 Runden gleichzeitig)
+- **Eigene Icons** aus dem CrafterTeam-Ressourcenpaket für Bereit, Menü, Verlassen, Start, Shop, Map-Abstimmung, Kit, Erfolge,
+  Bestenliste & Tagesbelohnung – nur bei geladenem Pack (kommt über das BungeeSystem-Addon), sonst normale Items
+
 ## Neu in 2.10.0 – BungeeSystem-Integration
 Arbeitet mit dem [BungeeSystem](https://github.com/conlog06/bungeesystem-crafterteam) auf dem Proxy zusammen (wird automatisch erkannt):
 - **Ban, Mute, Report, Freunde, Party & Clans** funktionieren auch in MissileWars – die Party folgt dem Leader in die Runde

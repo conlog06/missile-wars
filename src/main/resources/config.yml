@@ -99,6 +99,7 @@ map-rating: true          # nach der Runde Map bewerten (👍/👎)
 # Spieler landen automatisch in der offenen Lobby. Startet sie, öffnet beim nächsten Spieler eine neue.
 queues:
   max-games: 2            # so viele Runden gleichzeitig (wartend + laufend)
+  player-start-max: 4     # Spieler dürfen aus der Lobby eine neue Runde starten, wenn alle voll sind – bis zu so vielen Runden
 
 # ── Join-/Leave-Nachrichten (MiniMessage; {player} {rank} {online} {max}, first-join zusätzlich {unique}) ──
 join-messages:

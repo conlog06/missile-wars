@@ -1,5 +1,7 @@
 package de.crafterteam.missilewars.game;
 
+import de.crafterteam.missilewars.util.Icons;
+
 import de.crafterteam.missilewars.MissileWarsPlugin;
 import de.crafterteam.missilewars.missile.MissileType;
 import de.crafterteam.missilewars.util.Msg;
@@ -190,16 +192,16 @@ public final class GameItems {
     public void giveLobbyItems(Player p, Team team, boolean vote, boolean ready) {
         // Aufgeräumt: Bereit · Team · Menü (alles andere) · VIP-Start · Verlassen
         p.getInventory().clear();
-        ItemStack readyItem = create(MENU_READY);
-        if (ready) readyItem = tagged(new ItemStack(Material.GRAY_DYE), MENU_READY, "<mut><bold>Nicht mehr bereit",
-                "<ok>Du bist bereit.", "<dim>Rechtsklick zum Zurücknehmen");
+        ItemStack readyItem = Icons.apply(create(MENU_READY), p, "mw_ready");
+        if (ready) readyItem = Icons.apply(tagged(new ItemStack(Material.GRAY_DYE), MENU_READY, "<mut><bold>Nicht mehr bereit",
+                "<ok>Du bist bereit.", "<dim>Rechtsklick zum Zurücknehmen"), p, "mw_notready");
         p.getInventory().setItem(0, readyItem);
         Material wool = team == Team.GREEN ? Material.LIME_WOOL : Material.RED_WOOL;
         p.getInventory().setItem(2, tagged(new ItemStack(wool), MENU_TEAM, "<acc><bold>Team wählen", "<dim>Rechtsklick"));
-        p.getInventory().setItem(4, tagged(new ItemStack(Material.NETHER_STAR), MENU_LOBBY, "<pri><bold>Menü",
-                "<mut>Map-Abstimmung, Kit, Shop, Raketen,", "<mut>Erfolge, Statistiken, Tagesbelohnung", "<dim>Rechtsklick"));
-        if (p.hasPermission("missilewars.start")) p.getInventory().setItem(6, create(MENU_VIPSTART));
-        p.getInventory().setItem(8, create(MENU_LEAVE));
+        p.getInventory().setItem(4, Icons.apply(tagged(new ItemStack(Material.NETHER_STAR), MENU_LOBBY, "<pri><bold>Menü",
+                "<mut>Map-Abstimmung, Kit, Shop, Raketen,", "<mut>Erfolge, Statistiken, Tagesbelohnung", "<dim>Rechtsklick"), p, "mw_menu"));
+        if (p.hasPermission("missilewars.start")) p.getInventory().setItem(6, Icons.apply(create(MENU_VIPSTART), p, "mw_start"));
+        p.getInventory().setItem(8, Icons.apply(create(MENU_LEAVE), p, "mw_leave"));
     }
 
     /** Zuschauer (Spectator-Modus kann keine Items benutzen – Teleporter per /mw teleporter). */
@@ -220,7 +222,7 @@ public final class GameItems {
         if (plugin.getConfig().getBoolean("coins.enabled", true)) {
             ItemStack shop = tagged(new ItemStack(Material.EMERALD), MENU_SHOP, "<ok><bold>Runden-Shop",
                     "<mut>Raketen & Items gegen Coins", "<dim>Rechtsklick oder Taste F");
-            p.getInventory().setItem(6, shop);
+            p.getInventory().setItem(6, Icons.apply(shop, p, "mw_shop"));
         }
 
         p.getInventory().setChestplate(armor(Material.LEATHER_CHESTPLATE, team));

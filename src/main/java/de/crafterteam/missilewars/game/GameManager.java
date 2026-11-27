@@ -141,7 +141,7 @@ public final class GameManager {
     }
 
     /** Start-Map für eine neue Lobby: start-map oder zufällig, bevorzugt eine, die gerade nicht läuft. */
-    private MapConfig pickMap() {
+    public MapConfig pickMap() {
         String start = plugin.getConfig().getString("single-game.start-map", "random");
         MapConfig map = start == null || start.equalsIgnoreCase("random") ? null : plugin.maps().get(start);
         if (map != null && map.ready() && map.complete()) return map;
@@ -204,6 +204,52 @@ public final class GameManager {
         } catch (GameException e) {
             plugin.getLogger().warning("Neue Lobby konnte nicht erstellt werden: " + e.getMessage());
         }
+    }
+
+    /**
+     * Spieler startet selbst eine neue Lobby (aus der Lobby über den Navigator) – nur, wenn keine wartende Lobby mehr Platz hat.
+     * Obergrenze: queues.player-start-max (Standard 4 Runden gleichzeitig).
+     */
+    public void startNewLobby(Player p) {
+        Game open = openLobby();
+        if (open != null) {
+            de.crafterteam.missilewars.util.Msg.send(p, "<mut>In Lobby <txt>#" + open.id() + " <mut>ist noch Platz – du kommst dorthin.");
+            open.join(p);
+            return;
+        }
+        int limit = Math.max(maxGames(), plugin.getConfig().getInt("queues.player-start-max", 4));
+        if (activeCount() >= limit) {
+            de.crafterteam.missilewars.util.Msg.send(p, "<bad>Es laufen schon " + activeCount() + " Runden – mehr geht gerade nicht.");
+            quickJoin(p, null, false);
+            return;
+        }
+        MapConfig map = pickMap();
+        if (map == null) {
+            de.crafterteam.missilewars.util.Msg.send(p, "<bad>Es ist keine fertige Map vorhanden.");
+            return;
+        }
+        try {
+            Game g = create(map);
+            de.crafterteam.missilewars.util.Msg.broadcastLobby(plugin, "<ok>" + de.crafterteam.missilewars.util.Msg.esc(p.getName())
+                    + " <mut>hat Lobby <txt>#" + g.id() + " <mut>gestartet <dim>(" + map.name() + ")");
+            g.join(p);
+        } catch (GameException e) {
+            de.crafterteam.missilewars.util.Msg.send(p, "<bad>" + de.crafterteam.missilewars.util.Msg.esc(e.getMessage()));
+        }
+    }
+
+    /** Wunsch aus der Lobby ausführen: -1 = beste Runde, 0 = neue Lobby, sonst Lobby-Nummer. */
+    public void joinRequested(Player p, int lobbyId) {
+        if (lobbyId == 0) {
+            startNewLobby(p);
+            return;
+        }
+        Game target = lobbyId > 0 ? games.get(lobbyId) : null;
+        if (target == null || target.state() == Game.State.ENDING) {
+            quickJoin(p, null, false);
+            return;
+        }
+        switchTo(p, target);
     }
 
     /** Spieler in eine andere Runde wechseln lassen (Lobby-Auswahl). */

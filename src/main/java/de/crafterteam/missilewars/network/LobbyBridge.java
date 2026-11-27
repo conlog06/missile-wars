@@ -49,7 +49,7 @@ public final class LobbyBridge {
     private String url, user, password;
     private volatile boolean enabled, sharedCoins, coinsTable;
     private String serverName;
-    private int heartbeatTask = -1;
+    private int heartbeatTask = -1, lobbiesTask = -1;
 
     public LobbyBridge(MissileWarsPlugin plugin) {
         this.plugin = plugin;
@@ -109,12 +109,26 @@ public final class LobbyBridge {
             else addColumn(con, "ls_players", "online_server", "varchar(64) not null default ''");
             plugin.getLogger().info("LobbySystem-Integration aktiv (Server: " + serverName + ", gemeinsame Coins: " + sharedCoins() + ").");
         });
+        run(con -> {
+            try (Statement st = con.createStatement()) {
+                // Lobbys/Runden für das LobbySystem (Navigator → Lobby-Auswahl) + Beitrittswünsche aus der Lobby
+                st.executeUpdate("create table if not exists ls_game_lobbies (server varchar(64) not null, game varchar(32) not null, "
+                        + "lobby_id int not null, map varchar(64) not null, state varchar(16) not null, players int not null default 0, "
+                        + "max_players int not null default 0, updated bigint not null default 0, primary key (server, game, lobby_id))");
+                st.executeUpdate("create table if not exists ls_game_joins (uuid varchar(36) not null primary key, server varchar(64) not null, "
+                        + "game varchar(32) not null, lobby_id int not null, created bigint not null)");
+            }
+        });
         heartbeatTask = Bukkit.getScheduler().runTaskTimer(plugin, this::heartbeat, 40L, 200L).getTaskId();
+        lobbiesTask = Bukkit.getScheduler().runTaskTimer(plugin, this::publishLobbies, 60L, 40L).getTaskId();
     }
 
     public void stop() {
         if (!enabled) return;
         if (heartbeatTask != -1) Bukkit.getScheduler().cancelTask(heartbeatTask);
+        if (lobbiesTask != -1) Bukkit.getScheduler().cancelTask(lobbiesTask);
+        String srv = serverName;
+        run(con -> exec(con, "delete from ls_game_lobbies where server = ?", srv));
         String name = serverName;
         run(con -> {
             exec(con, "update ls_servers set online = 0, updated = 0 where name = ?", name);
@@ -130,6 +144,62 @@ public final class LobbyBridge {
             if (connection != null) connection.close();
         } catch (SQLException ignored) {
         }
+    }
+
+    // ── Lobbys für das LobbySystem ───────────────────────────────────
+
+    /** Alle 2 s: offene/laufende Runden in ls_game_lobbies (für die Lobby-Auswahl im LobbySystem). */
+    private void publishLobbies() {
+        if (plugin.games() == null) return;
+        List<Object[]> rows = new ArrayList<>();
+        for (Game g : plugin.games().all()) {
+            String state = switch (g.state()) {
+                case WAITING -> "WAITING";
+                case COUNTDOWN -> "COUNTDOWN";
+                case RUNNING -> "INGAME";
+                case ENDING -> "ENDING";
+            };
+            rows.add(new Object[]{g.id(), g.map().name(), state, g.playerCount(), g.maxPlayers()});
+        }
+        String srv = serverName;
+        long now = System.currentTimeMillis();
+        run(con -> {
+            exec(con, "delete from ls_game_lobbies where server = ? and game = ?", srv, GAME);
+            for (Object[] r : rows) {
+                exec(con, "insert into ls_game_lobbies (server, game, lobby_id, map, state, players, max_players, updated) values (?, ?, ?, ?, ?, ?, ?, ?)",
+                        srv, GAME, r[0], r[1], r[2], r[3], r[4], now);
+            }
+        });
+    }
+
+    /** Beitrittswunsch aus der Lobby holen (max. 60 s alt). Callback im Main-Thread: null = keiner, sonst Lobby-Nummer. */
+    public void pendingJoin(Player p, java.util.function.Consumer<Integer> then) {
+        String id = p.getUniqueId().toString();
+        boolean[] done = {false};
+        run(con -> {
+            Integer lobby = null;
+            try (PreparedStatement ps = con.prepareStatement("select lobby_id from ls_game_joins where uuid = ? and game = ? and created > ?")) {
+                ps.setString(1, id);
+                ps.setString(2, GAME);
+                ps.setLong(3, System.currentTimeMillis() - 60_000L);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) lobby = rs.getInt(1);
+                }
+            }
+            exec(con, "delete from ls_game_joins where uuid = ?", id);
+            Integer result = lobby;
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (done[0]) return;
+                done[0] = true;
+                then.accept(result);
+            });
+        });
+        // Fallback, falls die DB hängt
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (done[0]) return;
+            done[0] = true;
+            then.accept(null);
+        }, 40L);
     }
 
     // ── Heartbeat ────────────────────────────────────────────────────
