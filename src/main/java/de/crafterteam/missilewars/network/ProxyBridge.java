@@ -100,6 +100,7 @@ public final class ProxyBridge implements PluginMessageListener {
                         out.writeBoolean(true);
                         out.writeUTF(mysql ? "mysql" : "aus (lobbysystem.enabled: false)");
                         out.writeUTF(mysql ? lb.databaseId() : "");
+                        out.writeUTF(carrier.getUniqueId().toString()); // UUID-Abgleich mit dem Proxy
                     });
                 }
                 case "CLANTAG" -> {
