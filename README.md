@@ -22,6 +22,12 @@ Alte Clients (1.8 / 1.12) kommen per **ViaVersion + ViaBackwards** auf den Serve
 
 Die Raketen werden vom Plugin bewegt (wie Flugmaschinen, aber ohne echtes Redstone) – das läuft stabil, ohne Lag und unabhängig von Redstone-Änderungen in neuen Versionen.
 
+## Neu in 2.13.0 – Elo-Ranking & Party-Teams
+- **Elo-Ranking:** Start 1000, nach jeder Runde ± je nach Stärke des Gegnerteams. Ränge Bronze → Silber → Gold → Platin → Diamant → Meister → Champion,
+  Rangaufstieg wird angesagt, farbiges ◆ im Chat (Hover = Rang & Elo). `/mw top elo`, `/mw stats`, Hologramme mit `elo`. Wird ans LobbySystem übertragen (Profil & Bestenliste)
+- **Party-Teams:** Mitglieder einer BungeeSystem-Party landen im selben Team; vor dem Start werden Parties zusammengeführt, Auto-Balance verschiebt bevorzugt Spieler ohne Party (`party-teams` in der config)
+- **Performance:** Lobby-Liste fürs LobbySystem wird nur bei Änderungen neu geschrieben (sonst nur Zeitstempel), Party-Abfragen gebündelt in einer Query
+
 ## Neu in 2.12.0 – Lobby-Auswahl aus der Lobby & Icons
 - **Lobby-Auswahl im LobbySystem-Navigator:** alle Runden dieses Servers mit Map, Spielern & Status (`ls_game_lobbies`, alle 2 s)
 - **Bestimmter Lobby beitreten** oder **Schnell beitreten** direkt aus der Lobby – der Server setzt dich beim Join in die gewählte Runde

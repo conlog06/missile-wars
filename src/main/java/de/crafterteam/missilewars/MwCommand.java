@@ -291,7 +291,8 @@ public final class MwCommand implements BasicCommand {
         int games = e.get(Stat.GAMES), wins = e.get(Stat.WINS), kills = e.get(Stat.KILLS), deaths = e.get(Stat.DEATHS);
         String kd = String.format(Locale.ROOT, "%.2f", deaths == 0 ? kills : kills / (double) deaths);
         String wr = games == 0 ? "0" : String.valueOf(Math.round(wins * 100.0 / games));
-        Msg.send(s, "<txt>Statistiken von <acc>" + Msg.esc(e.name));
+        int elo = de.crafterteam.missilewars.stats.Elo.rating(plugin, e);
+        Msg.send(s, "<txt>Statistiken von <acc>" + Msg.esc(e.name) + " <dim>· <mut>Elo <txt>" + elo + " " + de.crafterteam.missilewars.stats.Elo.tier(elo).colored());
         s.sendMessage(Msg.mm(" <mut>Runden: <txt>" + games + " <dim>| <mut>Siege: <ok>" + wins
                 + " <dim>| <mut>Niederlagen: <bad>" + e.get(Stat.LOSSES) + " <dim>(" + wr + "%)"));
         s.sendMessage(Msg.mm(" <mut>Kills: <ok>" + kills + " <dim>| <mut>Tode: <bad>" + deaths
@@ -303,7 +304,7 @@ public final class MwCommand implements BasicCommand {
     private void top(CommandSender s, String[] args) {
         Stat stat = args.length > 1 ? Stat.parse(args[1]) : Stat.WINS;
         if (stat == null) {
-            Msg.send(s, "<bad>/mw top <wins|kills|raketen|portale|runden|tode>");
+            Msg.send(s, "<bad>/mw top <wins|kills|elo|raketen|portale|runden|tode>");
             return;
         }
         List<StatsManager.Entry> top = plugin.stats().top(stat, 10);
@@ -701,7 +702,7 @@ public final class MwCommand implements BasicCommand {
             switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "join", "spectate", "start", "stop", "vote" -> plugin.maps().all().forEach(m -> out.add(m.name()));
                 case "team" -> out.addAll(List.of("gruen", "rot"));
-                case "top" -> out.addAll(List.of("wins", "kills", "raketen", "portale", "runden", "tode", "coins"));
+                case "top" -> out.addAll(List.of("wins", "kills", "elo", "raketen", "portale", "runden", "tode", "coins"));
                 case "stats" -> Bukkit.getOnlinePlayers().forEach(pl -> out.add(pl.getName()));
                 case "holo", "hologram" -> { if (admin) out.addAll(List.of("add", "remove", "list")); }
                 case "map" -> {

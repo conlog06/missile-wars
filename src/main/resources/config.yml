@@ -41,6 +41,20 @@ tablist:
 killstreaks:
   enabled: true           # 3/5/7/10 Kills in Folge: Ansage + Bonus-Items
 
+# Elo-Ranking: Start 1000, Ränge Bronze → Silber (900) → Gold (1100) → Platin (1300) → Diamant (1500) → Meister (1700) → Champion (1900)
+# /mw top elo · /mw stats · wird ans LobbySystem (Profil/Bestenliste) übertragen
+elo:
+  enabled: true
+  start: 1000
+  k-factor: 32            # max. Punkte pro Runde
+  min-players: 2
+  show-in-chat: true      # farbiges ◆ vor dem Namen (Hover zeigt Rang & Elo)
+
+# Party-Teams: Mitglieder einer BungeeSystem-Party kommen ins selbe Team (gleiche Datenbank wie LobbySystem nötig)
+party-teams:
+  enabled: true
+  max-difference: 1       # so viele Spieler darf ein Team dadurch größer sein
+
 # ── Coins & Shop ────────────────────────────────────────────────
 coins:
   enabled: true

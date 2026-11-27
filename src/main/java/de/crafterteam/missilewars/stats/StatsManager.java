@@ -22,7 +22,7 @@ public final class StatsManager {
     public enum Stat {
         WINS("Siege"), LOSSES("Niederlagen"), KILLS("Kills"), DEATHS("Tode"),
         GAMES("Runden"), MISSILES("Raketen"), PORTALS("Portale zerstört"), COINS("Coins"),
-        ASSISTS("Assists"), INTERCEPTS("Abgefangen"), AIRDROPS("Airdrops"), BEST_STREAK("Beste Serie");
+        ASSISTS("Assists"), INTERCEPTS("Abgefangen"), AIRDROPS("Airdrops"), BEST_STREAK("Beste Serie"), ELO("Elo");
 
         private final String label;
 
@@ -53,6 +53,7 @@ public final class StatsManager {
                 case "intercepts", "abgefangen" -> INTERCEPTS;
                 case "airdrops" -> AIRDROPS;
                 case "streak", "serie" -> BEST_STREAK;
+                case "elo", "ranking", "rang" -> ELO;
                 default -> null;
             };
         }
@@ -328,6 +329,13 @@ public final class StatsManager {
             plugin.progression().afterStat(p, e, levelBefore);
             if (amount > 0) plugin.progression().questProgress(p, stat, amount);
         }
+    }
+
+    /** Wert direkt setzen (z. B. Elo). */
+    public void set(Player p, Stat stat, int value) {
+        Entry e = entries.computeIfAbsent(p.getUniqueId(), id -> new Entry(id, p.getName()));
+        e.values.put(stat, value);
+        touch(e.id);
     }
 
     /** Höchstwert speichern (z. B. beste Killserie). */

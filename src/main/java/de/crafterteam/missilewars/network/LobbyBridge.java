@@ -45,6 +45,12 @@ public final class LobbyBridge {
         return t;
     });
     private final Map<UUID, Long> lobbyCoins = new ConcurrentHashMap<>();
+    /** Proxy-Party (BungeeSystem, ls_party_members) je Spieler – für Party-Teams. */
+    private final Map<UUID, String> parties = new ConcurrentHashMap<>();
+    private volatile boolean partyTable;
+    /** Letzter Stand von ls_game_lobbies – unverändert = nur Zeitstempel auffrischen (Performance). */
+    private String lastLobbies = "";
+    private long lastLobbiesFull, lastLobbiesTouch;
     private Connection connection;
     private String url, user, password;
     private volatile boolean enabled, sharedCoins, coinsTable;
@@ -102,6 +108,8 @@ public final class LobbyBridge {
                         + "updated bigint not null default 0, primary key (uuid, game))");
             }
             addColumn(con, "ls_servers", "state", "varchar(32) not null default ''");
+            addColumn(con, "ls_game_stats", "elo", "int not null default 0");
+            partyTable = tableExists(con, "ls_party_members");
             addColumn(con, "ls_servers", "game", "varchar(32) not null default ''");
             coinsTable = tableExists(con, "ls_players");
             if (!coinsTable) plugin.getLogger().warning("LobbySystem-Tabelle ls_players nicht gefunden – "
@@ -163,6 +171,19 @@ public final class LobbyBridge {
         }
         String srv = serverName;
         long now = System.currentTimeMillis();
+        StringBuilder sig = new StringBuilder();
+        for (Object[] r : rows) sig.append(java.util.Arrays.toString(r)).append(';');
+        String signature = sig.toString();
+        if (signature.equals(lastLobbies) && now - lastLobbiesFull < 60_000L) {
+            // nichts geändert → nur "lebt noch" (die Lobby zeigt Einträge bis 15 s alt); alle 6 s reicht
+            if (now - lastLobbiesTouch >= 6000L) {
+                lastLobbiesTouch = now;
+                run(con -> exec(con, "update ls_game_lobbies set updated = ? where server = ? and game = ?", now, srv, GAME));
+            }
+            return;
+        }
+        lastLobbies = signature;
+        lastLobbiesFull = lastLobbiesTouch = now;
         run(con -> {
             exec(con, "delete from ls_game_lobbies where server = ? and game = ?", srv, GAME);
             for (Object[] r : rows) {
@@ -206,6 +227,14 @@ public final class LobbyBridge {
 
     private void heartbeat() {
         int online = Bukkit.getOnlinePlayers().size();
+        // Parties nur für Spieler in wartenden Runden auffrischen (dort werden Teams gebildet)
+        if (plugin.games() != null && partyTable) {
+            List<UUID> waiting = new ArrayList<>();
+            for (Game g : plugin.games().all()) {
+                if (g.state() == Game.State.WAITING || g.state() == Game.State.COUNTDOWN) for (Player p : g.players()) waiting.add(p.getUniqueId());
+            }
+            refreshParties(waiting);
+        }
         int max = Bukkit.getMaxPlayers();
         String state = "WAITING";
         if (plugin.games() != null) {
@@ -239,6 +268,7 @@ public final class LobbyBridge {
     public void onJoin(Player p) {
         if (!enabled) return;
         UUID id = p.getUniqueId();
+        refreshParties(List.of(id));
         String name = p.getName();
         run(con -> {
             if (!coinsTable) return;
@@ -268,10 +298,39 @@ public final class LobbyBridge {
         });
     }
 
+    // ── Party-Teams ──────────────────────────────────────────────────
+
+    /** Party-ID des Spielers oder null. */
+    public String party(UUID id) {
+        return parties.get(id);
+    }
+
+    /** Party-Zugehörigkeit der angegebenen Spieler mit einer Abfrage neu laden. */
+    public void refreshParties(java.util.Collection<UUID> ids) {
+        if (!enabled || !partyTable || ids.isEmpty()) return;
+        List<UUID> list = new ArrayList<>(ids);
+        run(con -> {
+            Map<UUID, String> found = new java.util.HashMap<>();
+            String in = String.join(",", java.util.Collections.nCopies(list.size(), "?"));
+            try (PreparedStatement ps = con.prepareStatement("select uuid, party_id from ls_party_members where uuid in (" + in + ")")) {
+                for (int i = 0; i < list.size(); i++) ps.setString(i + 1, list.get(i).toString());
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) found.put(UUID.fromString(rs.getString(1)), rs.getString(2));
+                }
+            }
+            for (UUID u : list) {
+                String party = found.get(u);
+                if (party == null) parties.remove(u);
+                else parties.put(u, party);
+            }
+        });
+    }
+
     public void onQuit(Player p) {
         if (!enabled) return;
         UUID id = p.getUniqueId();
         lobbyCoins.remove(id);
+        parties.remove(id);
         String name = serverName;
         run(con -> {
             if (coinsTable) exec(con, "update ls_players set online_server = '', last_seen = ? where uuid = ? and online_server = ?",
@@ -327,13 +386,14 @@ public final class LobbyBridge {
         List<Object[]> rows = new ArrayList<>();
         for (StatsManager.Entry e : entries) {
             rows.add(new Object[]{e.id.toString(), e.name, e.get(StatsManager.Stat.WINS), e.get(StatsManager.Stat.KILLS),
-                    e.get(StatsManager.Stat.DEATHS), e.get(StatsManager.Stat.GAMES), Progression.level(e)});
+                    e.get(StatsManager.Stat.DEATHS), e.get(StatsManager.Stat.GAMES), Progression.level(e),
+                    de.crafterteam.missilewars.stats.Elo.rating(plugin, e)});
         }
         run(con -> {
             try (PreparedStatement ps = con.prepareStatement(
-                    "insert into ls_game_stats (uuid, game, name, wins, kills, deaths, games, level, updated) values (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    "insert into ls_game_stats (uuid, game, name, wins, kills, deaths, games, level, updated, elo) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                             + "on duplicate key update name = values(name), wins = values(wins), kills = values(kills), deaths = values(deaths), "
-                            + "games = values(games), level = values(level), updated = values(updated)")) {
+                            + "games = values(games), level = values(level), updated = values(updated), elo = values(elo)")) {
                 long now = System.currentTimeMillis();
                 for (Object[] r : rows) {
                     ps.setString(1, (String) r[0]);
@@ -342,6 +402,7 @@ public final class LobbyBridge {
                     ps.setString(3, n.length() > 16 ? n.substring(0, 16) : n);
                     for (int i = 2; i <= 6; i++) ps.setInt(i + 2, (Integer) r[i]);
                     ps.setLong(9, now);
+                    ps.setInt(10, (Integer) r[7]);
                     ps.addBatch();
                 }
                 ps.executeBatch();

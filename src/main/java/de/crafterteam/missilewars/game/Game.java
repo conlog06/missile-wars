@@ -482,7 +482,8 @@ public final class Game {
             return;
         }
         snapshots.putIfAbsent(p.getUniqueId(), PlayerSnapshot.capture(p));
-        Team t = smallerTeam();
+        Team t = partyTeam(p);
+        if (t == null) t = smallerTeam();
         teams.put(p.getUniqueId(), t);
         plugin.games().bind(p, this);
         setBoardTeam(p, t);
@@ -620,6 +621,52 @@ public final class Game {
             broadcast("<bad>Zu wenige Spieler – Countdown abgebrochen.");
         }
         updateBoard();
+    }
+
+    /** Party-Teams: Mitglieder derselben (Proxy-)Party landen im selben Team, solange es fair bleibt. */
+    private Team partyTeam(Player p) {
+        if (!plugin.getConfig().getBoolean("party-teams.enabled", true) || plugin.lobbyBridge() == null) return null;
+        String party = plugin.lobbyBridge().party(p.getUniqueId());
+        if (party == null) return null;
+        int maxDiff = plugin.getConfig().getInt("party-teams.max-difference", 1);
+        for (Player o : players()) {
+            if (o.equals(p) || !party.equals(plugin.lobbyBridge().party(o.getUniqueId()))) continue;
+            Team t = team(o);
+            if (t != null && teamPlayers(t).size() + 1 - teamPlayers(t.other()).size() <= maxDiff) return t;
+        }
+        return null;
+    }
+
+    /** Vor dem Start: Parties zusammenführen (Party wurde evtl. erst nach dem Beitritt geladen). */
+    private void groupParties() {
+        if (!plugin.getConfig().getBoolean("party-teams.enabled", true) || plugin.lobbyBridge() == null) return;
+        int maxDiff = plugin.getConfig().getInt("party-teams.max-difference", 1);
+        java.util.Map<String, List<Player>> groups = new java.util.HashMap<>();
+        for (Player p : players()) {
+            String party = plugin.lobbyBridge().party(p.getUniqueId());
+            if (party != null) groups.computeIfAbsent(party, k -> new ArrayList<>()).add(p);
+        }
+        for (List<Player> g : groups.values()) {
+            if (g.size() < 2) continue;
+            long green = g.stream().filter(x -> team(x) == Team.GREEN).count();
+            Team target = green * 2 >= g.size() ? Team.GREEN : Team.RED;
+            for (Player x : g) {
+                if (team(x) == target) continue;
+                // nur tauschen, wenn es auf der Zielseite einen Spieler ohne Party gibt → Teams bleiben gleich groß
+                Player swap = null;
+                for (Player o : teamPlayers(target)) if (plugin.lobbyBridge().party(o.getUniqueId()) == null) { swap = o; break; }
+                if (swap != null) {
+                    teams.put(swap.getUniqueId(), target.other());
+                    setBoardTeam(swap, target.other());
+                    Msg.send(swap, "<acc>Teams wegen einer Party getauscht – du bist jetzt in Team " + target.other().colored() + "<acc>.");
+                } else if (teamPlayers(target).size() + 1 - (teamPlayers(target.other()).size() - 1) > maxDiff) {
+                    continue;
+                }
+                teams.put(x.getUniqueId(), target);
+                setBoardTeam(x, target);
+                Msg.send(x, "<acc>Du spielst mit deiner Party in Team " + target.colored() + "<acc>.");
+            }
+        }
     }
 
     private Team smallerTeam() {
@@ -1034,7 +1081,11 @@ public final class Game {
             if (Math.abs(g.size() - r.size()) <= 1) return;
             List<Player> bigger = g.size() > r.size() ? g : r;
             Team target = g.size() > r.size() ? Team.RED : Team.GREEN;
-            Player moved = bigger.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(bigger.size()));
+            // lieber Spieler ohne Party verschieben
+            List<Player> solo = new ArrayList<>(bigger);
+            if (plugin.lobbyBridge() != null) solo.removeIf(x -> plugin.lobbyBridge().party(x.getUniqueId()) != null);
+            List<Player> pool = solo.isEmpty() ? bigger : solo;
+            Player moved = pool.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(pool.size()));
             teams.put(moved.getUniqueId(), target);
             setBoardTeam(moved, target);
             Msg.send(moved, "<acc>Teams ausgeglichen – du bist jetzt in Team " + target.colored() + "<acc>.");
@@ -1057,6 +1108,7 @@ public final class Game {
             p.setExp(0f);
         }
         applyLayerVote();
+        groupParties();
         if (plugin.getConfig().getBoolean("auto-balance", true)) autoBalance();
         state = State.RUNNING;
         seconds = 0;
@@ -2119,6 +2171,21 @@ public final class Game {
         missiles.clear();
         broadcast(reason);
         broadcast("Team " + winner.colored() + " <mut>hat gewonnen! <dim>(" + formatTime(seconds) + ")");
+        // Elo-Wertung vor den Statistiken (alle noch online & im Team)
+        java.util.Map<UUID, Integer> elo = de.crafterteam.missilewars.stats.Elo.apply(plugin, teamPlayers(winner), teamPlayers(winner.other()));
+        for (Player p : players()) {
+            Integer d = elo.get(p.getUniqueId());
+            if (d != null) {
+                int now = de.crafterteam.missilewars.stats.Elo.rating(plugin, plugin.stats().entry(p));
+                var tier = de.crafterteam.missilewars.stats.Elo.tier(now);
+                var before = de.crafterteam.missilewars.stats.Elo.tier(now - d);
+                Msg.send(p, "<mut>Elo: <txt>" + now + " " + (d >= 0 ? "<ok>+" + d : "<bad>" + d) + " <dim>· " + tier.colored());
+                if (tier.min() > before.min()) {
+                    Msg.broadcastLobby(plugin, "<acc>⬆ <txt>" + Msg.esc(p.getName()) + " <mut>ist jetzt " + tier.colored() + "<mut>!");
+                    p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.8f, 1.2f);
+                }
+            }
+        }
         for (Player p : players()) {
             plugin.stats().add(p, team(p) == winner ? Stat.WINS : Stat.LOSSES, 1);
             if (team(p) == winner) plugin.shop().reward(p, "win", "Sieg");

@@ -404,7 +404,13 @@ public final class GameListener implements Listener {
         net.kyori.adventure.text.Component rank = plugin.nameTags().prefix(p);
         net.kyori.adventure.text.Component head = rank.equals(net.kyori.adventure.text.Component.empty())
                 ? Msg.mm(prefix) : Msg.mm(prefix).append(rank).append(net.kyori.adventure.text.Component.space());
-        String rest = plugin.progression().badge(p) + " <txt>" + Msg.esc(p.getName()) + "<dim> » <mut>";
+        String eloTag = "";
+        if (plugin.getConfig().getBoolean("elo.enabled", true) && plugin.getConfig().getBoolean("elo.show-in-chat", true)) {
+            int elo = de.crafterteam.missilewars.stats.Elo.rating(plugin, plugin.stats().get(p.getUniqueId()));
+            var tier = de.crafterteam.missilewars.stats.Elo.tier(elo);
+            eloTag = "<hover:show_text:'" + tier.colored() + " <gray>· Elo " + elo + "'><" + tier.color() + ">◆</" + tier.color() + "></hover> ";
+        }
+        String rest = eloTag + plugin.progression().badge(p) + " <txt>" + Msg.esc(p.getName()) + "<dim> » <mut>";
         e.renderer((source, displayName, message, viewer) -> head.append(Msg.mm(rest)).append(message));
     }
 
